@@ -1,0 +1,15 @@
+# Database files
+*.db
+
+# Environment variables and secrets
+.env
+
+# Python virtual environment
+venv/
+env/
+__pycache__/
+*.pyc
+
+# IDE specific files
+.vscode/
+.idea/ 

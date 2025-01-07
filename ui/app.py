@@ -1,9 +1,17 @@
 import streamlit as st
 import uuid
 from datetime import datetime
-from ..config import Config
-from ..database.analyst import DatabaseAnalyst
-from ..chat.manager import ChatManager
+import sys
+import os
+
+# Add project root to Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+from config import Config
+from database.analyst import DatabaseAnalyst
+from ui.manager import ChatManager
 
 def initialize_session_state():
     """Initialize or reset the session state"""
@@ -112,17 +120,155 @@ def handle_delete_chat(chat_manager: ChatManager, chat_id: str):
     st.rerun()
 
 def render_messages(analyst: DatabaseAnalyst):
-    """Render chat messages"""
+    """Render chat messages with detailed process steps"""
+    # Add custom CSS for message styling
+    st.markdown("""
+        <style>
+        .step-header {
+            background-color: #f0f2f6;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+            border-left: 4px solid #4CAF50;
+        }
+        .step-content {
+            margin: 1rem 0 2rem 1rem;
+            padding-left: 1rem;
+            border-left: 2px solid #e0e0e0;
+        }
+        .sql-block {
+            background-color: #f8f9fa;
+            font-family: monospace;
+            padding: 1rem;
+            border-radius: 0.3rem;
+        }
+        .entity-match {
+            background-color: #e3f2fd;
+            padding: 0.5rem;
+            border-radius: 0.3rem;
+            margin: 0.5rem 0;
+        }
+        .analysis-section {
+            background-color: #fff3e0;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if message["role"] == "user":
-                st.markdown(message["content"])
+                st.markdown("🧑‍💻 **User Query:**")
+                st.info(message["content"])
             else:
                 if isinstance(message.get("content"), dict):
-                    formatted_output = analyst.format_output(message["content"])
-                    st.markdown(formatted_output)
+                    with st.expander("View Detailed Analysis Process", expanded=True):
+                        if steps := message["content"].get("steps", []):
+                            for step in steps:
+                                # Step Header
+                                st.markdown(f"""
+                                <div class="step-header">
+                                    <h3>{step['step']} {_get_step_emoji(step['step'])}</h3>
+                                    <em>{step['description']}</em>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                with st.container():
+                                    if step["step"] == "Query Understanding":
+                                        st.info(f"📝 Input Query: {step['input']}")
+                                    
+                                    elif step["step"] == "Entity Recognition":
+                                        st.subheader("🔍 Identified Entities")
+                                        for entity in step['entities']:
+                                            with st.container():
+                                                st.markdown(f"""
+                                                <div class="entity-match">
+                                                    <strong>Table:</strong> {entity['table']}<br>
+                                                    <strong>Column:</strong> {entity['column']}<br>
+                                                    <strong>Matched:</strong> {entity['matched_value']}<br>
+                                                    <strong>Score:</strong> {entity['score']}
+                                                </div>
+                                                """, unsafe_allow_html=True)
+                                    
+                                    elif step["step"] == "Query Decomposition":
+                                        st.subheader("📋 Sub-queries")
+                                        for i, sub_query in enumerate(step['sub_queries'], 1):
+                                            st.markdown(f"**{i}.** {sub_query}")
+                                    
+                                    elif step["step"] == "SQL Generation":
+                                        st.subheader("💻 Generated SQL Queries")
+                                        for query in step['queries']:
+                                            st.markdown(f"**For:** _{query['sub_query']}_")
+                                            st.code(query['sql_query'], language="sql")
+                                    
+                                    elif step["step"] == "Query Execution":
+                                        st.subheader("📊 Query Results")
+                                        for result in step['results']:
+                                            st.markdown(f"**Query:** _{result['sub_query']}_")
+                                            if result.get('error'):
+                                                st.error(f"Error: {result['error']}")
+                                            else:
+                                                if result['results']:
+                                                    st.dataframe(
+                                                        result['results'],
+                                                        use_container_width=True,
+                                                        hide_index=True
+                                                    )
+                                                else:
+                                                    st.info("No results found")
+                                    
+                                    elif step["step"] == "Analysis":
+                                        if analysis := step.get('analysis', {}).get('analysis', {}):
+                                            st.subheader("🎯 Analysis Results")
+                                            
+                                            # Summary
+                                            with st.container():
+                                                st.markdown("""
+                                                <div class="analysis-section">
+                                                    <strong>Summary:</strong><br>
+                                                    {analysis.get('summary', 'No summary available')}
+                                                </div>
+                                                """, unsafe_allow_html=True)
+                                            
+                                            col1, col2 = st.columns(2)
+                                            with col1:
+                                                if insights := analysis.get('insights'):
+                                                    st.markdown("**🔍 Key Insights:**")
+                                                    st.markdown(insights)
+                                                
+                                                if trends := analysis.get('trends'):
+                                                    st.markdown("**📈 Trends:**")
+                                                    st.markdown(trends)
+                                            
+                                            with col2:
+                                                if implications := analysis.get('implications'):
+                                                    st.markdown("**💡 Business Implications:**")
+                                                    st.markdown(implications)
+                                                
+                                                if relationships := analysis.get('relationships'):
+                                                    st.markdown("**🔗 Relationships:**")
+                                                    st.markdown(relationships)
+                                
+                                st.markdown("---")
                 else:
-                    st.markdown(message["content"])
+                    if message["content"].startswith("❌"):
+                        st.error(message["content"])
+                    else:
+                        st.markdown(message["content"])
+
+def _get_step_emoji(step_name: str) -> str:
+    """Get emoji for each step"""
+    emojis = {
+        "Query Understanding": "📝",
+        "Entity Recognition": "🔍",
+        "Query Decomposition": "📋",
+        "SQL Generation": "💻",
+        "Query Execution": "📊",
+        "Analysis": "🎯"
+    }
+    return emojis.get(step_name, "")
 
 def main():
     st.set_page_config(
