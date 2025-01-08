@@ -15,18 +15,27 @@ def test_analyzer():
     analyzer = SQLAnalyzer(llm)
     
     # Test data
+    # ... existing code ...
+
+    # Test data
     test_query_info = {
-        'original_query': "what is the room revenue for ac wailea for the month of dec 2024?"
+        'original_query': "what is the room revenue for ac wailea for the month of dec 2024?",
+        'query_type': 'revenue',  # Add query type
+        'time_period': 'month',   # Add time period
+        'date': '2024-12',        # Add date
+        'property': 'AC Wailea'   # Add property
     }
     
     test_results = [{
         'sub_query': "what is the room revenue for ac wailea for the month of dec 2024?",
-        'sql_query': "SELECT SQL_Property, Revenue FROM final_income_sheet_new_seq WHERE SQL_Property = 'AC Wailea'",
+        'sql_query': "SELECT SQL_Property, Revenue FROM final_income_sheet_new_seq WHERE SQL_Property = 'AC Wailea' AND Date = '2024-12'",
         'results': [
-            {'SQL_Property': 'AC Wailea', 'Revenue': 150000},
-            {'SQL_Property': 'AC Wailea', 'Revenue': 160000}
+            {'SQL_Property': 'AC Wailea', 'Revenue': 150000, 'Date': '2024-12-01'},
+            {'SQL_Property': 'AC Wailea', 'Revenue': 160000, 'Date': '2024-12-02'}
         ]
     }]
+
+# ... existing code ...
     
     print("\n=== Testing SQLAnalyzer ===")
     print(f"Original Query: {test_query_info['original_query']}")

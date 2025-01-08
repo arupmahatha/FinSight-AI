@@ -14,7 +14,7 @@ def get_ngrams(text: str, n_values: List[int] = [1, 2, 3]) -> List[str]:
     
     return all_ngrams
 
-def search_financial_terms(search_term: str, table_info, threshold: int = 70) -> List[Dict]:
+def search_financial_terms(search_term: str, table_info, threshold: int = 100) -> List[Dict]:
     """
     Search for financial terms using n-gram based fuzzy matching
     Returns list of matches with column and value information
