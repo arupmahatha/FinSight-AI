@@ -25,7 +25,7 @@ class SQLGenerator:
         # Format available columns
         available_columns = self._format_table_schema(table_info)
         
-        # Format entity matches for the prompt
+        # Use the entities that were already found during decomposition
         entity_matches = self._format_entity_matches(query_info.get('entities', []), table_info)
         
         prompt = f"""Given the following information, generate a SQL query:
@@ -52,8 +52,13 @@ use "WHERE company = 'Apple Inc.'" NOT "WHERE company = 'apple'"
 
 SQL Query:"""
 
-        response = self.llm.invoke(prompt)
-        sql_query = response.content.strip()
+        # Handle both function-style and object-style LLM interfaces
+        if callable(self.llm):
+            response = self.llm(prompt)
+            sql_query = response.strip()
+        else:
+            response = self.llm.invoke(prompt)
+            sql_query = response.content.strip()
         
         # Basic validation
         if not sql_query.lower().startswith('select'):

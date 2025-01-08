@@ -15,15 +15,8 @@ def test_analyzer():
     analyzer = SQLAnalyzer(llm)
     
     # Test data
-    # ... existing code ...
-
-    # Test data
     test_query_info = {
-        'original_query': "what is the room revenue for ac wailea for the month of dec 2024?",
-        'query_type': 'revenue',  # Add query type
-        'time_period': 'month',   # Add time period
-        'date': '2024-12',        # Add date
-        'property': 'AC Wailea'   # Add property
+        'original_query': "what is the room revenue for ac wailea for the month of dec 2024?"
     }
     
     test_results = [{
@@ -34,8 +27,6 @@ def test_analyzer():
             {'SQL_Property': 'AC Wailea', 'Revenue': 160000, 'Date': '2024-12-02'}
         ]
     }]
-
-# ... existing code ...
     
     print("\n=== Testing SQLAnalyzer ===")
     print(f"Original Query: {test_query_info['original_query']}")
@@ -61,13 +52,18 @@ def test_analyzer():
     analysis_results = analyzer.analyze_results(test_query_info, test_results)
     print("\nAnalysis Results:")
     if analysis_results['success']:
-        print("\nSummary:", analysis_results['analysis'].get('summary'))
-        print("\nInsights:", analysis_results['analysis'].get('insights'))
-        print("\nTrends:", analysis_results['analysis'].get('trends'))
-        print("\nImplications:", analysis_results['analysis'].get('implications'))
-        print("\nRelationships:", analysis_results['analysis'].get('relationships'))
+        analysis = analysis_results['analysis']
+        print(f"\nSuccess: {analysis_results['success']}")
+        print(f"Sub-query count: {analysis_results['sub_query_count']}")
+        print(f"Total result count: {analysis_results['total_result_count']}")
+        print("\nAnalysis:")
+        print(f"Summary: {analysis.get('summary', 'N/A')}")
+        print(f"Insights: {analysis.get('insights', 'N/A')}")
+        print(f"Trends: {analysis.get('trends', 'N/A')}")
+        print(f"Implications: {analysis.get('implications', 'N/A')}")
+        print(f"Relationships: {analysis.get('relationships', 'N/A')}")
     else:
-        print(f"Analysis failed: {analysis_results.get('error')}")
+        print(f"Analysis failed: {analysis_results.get('error', 'Unknown error')}")
 
 if __name__ == "__main__":
     test_analyzer() 

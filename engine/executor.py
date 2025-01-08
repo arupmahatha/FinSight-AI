@@ -32,10 +32,6 @@ class SQLExecutor:
             if re.search(pattern, query_lower):
                 return False, f"Operation '{operation}' is not allowed"
 
-        # Check for multiple statements (;)
-        if ';' in query_lower:
-            return False, "Multiple statements are not allowed"
-
         return True, ""
 
     def execute_query(self, sql_query: str) -> Tuple[bool, List[Dict], str]:

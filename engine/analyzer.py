@@ -8,42 +8,59 @@ class SQLAnalyzer:
     def analyze_results(self, query_info: Dict, sub_query_results: List[Dict]) -> Dict:
         """Analyze SQL query results from multiple sub-queries and generate comprehensive insights"""
         try:
-            # Format all sub-query results
-            formatted_results = []
-            for result in sub_query_results:
-                formatted_result = self._format_results_for_prompt(result.get('results', []))
-                formatted_results.append({
-                    'sub_query': result.get('sub_query', ''),
-                    'sql_query': result.get('sql_query', ''),
-                    'results': formatted_result
-                })
+            # Format results for prompt
+            formatted_results = self._format_sub_queries_for_prompt(sub_query_results)
             
-            prompt = f"""Analyze the following set of query results and provide comprehensive insights:
-
-Original User Question: {query_info.get('original_query', '')}
-
-Sub-queries and their results:
-{self._format_sub_queries_for_prompt(formatted_results)}
-
-Format the response as JSON with these keys:
-- summary: Overall summary of all results
-- insights: Key patterns and findings
-- trends: Notable trends and anomalies
-- implications: Business implications
-- relationships: Connections between sub-query results"""
-
-            # Use the new Anthropic client method
-            message = self.llm.messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=1024,
-                messages=[{
-                    "role": "user",
-                    "content": prompt
-                }]
-            )
+            # Create prompt for analysis
+            prompt = f"""
+            Analyze the following SQL query results and provide insights:
             
-            # Parse JSON response
-            analysis = eval(message.content[0].text.strip())
+            Original Query: {query_info['original_query']}
+            
+            Results:
+            {formatted_results}
+            
+            Provide analysis in the following JSON format:
+            {{
+                "summary": "Overall summary of the results",
+                "insights": "Key insights from the data",
+                "trends": "Any noticeable trends",
+                "implications": "Business implications",
+                "relationships": "Notable relationships between data points"
+            }}
+            """
+            
+            # Get analysis from LLM
+            if callable(self.llm):
+                response = self.llm(prompt)
+                response_text = response
+            else:
+                response = self.llm.invoke(prompt)
+                response_text = response.content[0].text if hasattr(response, 'content') else response.content
+
+            # Clean and parse the response
+            import json
+            import ast
+
+            try:
+                # First try to parse as JSON
+                analysis = json.loads(response_text)
+            except json.JSONDecodeError:
+                try:
+                    # If JSON fails, try to find and parse dictionary string
+                    dict_str = response_text.strip()
+                    # Remove any markdown code block markers if present
+                    dict_str = dict_str.replace('```json', '').replace('```', '').strip()
+                    analysis = ast.literal_eval(dict_str)
+                except:
+                    # If both parsing attempts fail, create a basic analysis
+                    analysis = {
+                        "summary": "Unable to parse analysis results",
+                        "insights": "Analysis format error",
+                        "trends": "Analysis format error",
+                        "implications": "Analysis format error",
+                        "relationships": "Analysis format error"
+                    }
             
             return {
                 "success": True,

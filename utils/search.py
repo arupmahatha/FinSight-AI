@@ -12,6 +12,10 @@ def get_ngrams(text: str, n_values: List[int] = [1, 2, 3]) -> List[str]:
             n_grams = [' '.join(gram) for gram in ngrams(words, n)]
             all_ngrams.extend(n_grams)
     
+    # Also include the full text if it's not already in the n-grams
+    if text.lower() not in all_ngrams:
+        all_ngrams.append(text.lower())
+    
     return all_ngrams
 
 def search_financial_terms(search_term: str, table_info, threshold: int = 100) -> List[Dict]:
@@ -41,24 +45,35 @@ def search_financial_terms(search_term: str, table_info, threshold: int = 100) -
             # Find best matching n-grams
             best_score = 0
             best_match = None
+            best_search_term = None
             
+            # Try matching full phrases first
+            full_score = fuzz.ratio(search_term.lower(), value.lower())
+            if full_score >= threshold:
+                best_score = full_score
+                best_match = value
+                best_search_term = search_term
+            
+            # Then try n-gram matches
             for search_gram in search_ngrams:
                 for value_gram in value_ngrams:
-                    score = fuzz.ratio(search_gram.lower(), value_gram.lower())
+                    # Use token_sort_ratio to better handle word order variations
+                    score = fuzz.token_sort_ratio(search_gram.lower(), value_gram.lower())
                     if score > best_score and score >= threshold:
                         best_score = score
-                        best_match = {
-                            'search_term': search_gram,
-                            'matched_value': value,
-                            'column': col_name,
-                            'score': score
-                        }
+                        best_match = value
+                        best_search_term = search_gram
             
             if best_match:
-                matches.append(best_match)
+                matches.append({
+                    'search_term': best_search_term,
+                    'matched_value': best_match,
+                    'column': col_name,
+                    'score': best_score
+                })
     
     # Sort by score and remove duplicates keeping highest score
-    matches.sort(key=lambda x: x['score'], reverse=True)
+    matches.sort(key=lambda x: (-x['score'], len(x['search_term'].split()), x['matched_value']))
     unique_matches = []
     seen_values = set()
     

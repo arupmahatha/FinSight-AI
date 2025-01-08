@@ -13,15 +13,27 @@ class QueryDecomposer:
 
     def _decompose_complex_query(self, query: str, chat_history: List[Dict] = None) -> List[str]:
         """Break down complex queries into simpler sub-queries"""
-        prompt = f"""Break down this complex query into simple, individual questions. 
-        If the query is already simple, return it as is.
-        Query: {query}
+        prompt = f"""Break down this query ONLY if it compares multiple entities or asks for multiple pieces of information.
+        If the query is about a single entity or metric, return it unchanged.
         
-        Format: Return a list of sub-questions."""
+        Examples:
+        1. Input: "What is the Room Revenue for AC Wailea for Dec 2024?"
+           Output: ["what is the Room Revenue for AC Wailea for Dec 2024?"]
+           
+        2. Input: "Compare the Room Revenue for AC Wailea and Residence Inn Tampa for Dec 2024"
+           Output: [
+               "What is the Room Revenue for AC Wailea for Dec 2024?",
+               "What is the Room Revenue for Residence Inn Tampa for Dec 2024?"
+           ]
+        
+        Current Query: {query}
+        
+        Return the sub-queries as a simple list, one per line. For single queries, return just the original query."""
 
         try:
-            response = self.llm.invoke(prompt)
-            sub_queries = [q.strip() for q in response.content.split('\n') if q.strip()]
+            response = self.llm(prompt)
+            # Clean up the response and split into lines
+            sub_queries = [q.strip() for q in response.split('\n') if q.strip() and not q.startswith('[') and not q.startswith(']')]
             return sub_queries if sub_queries else [query]
         except Exception as e:
             print(f"Query decomposition failed: {e}")
@@ -48,8 +60,8 @@ class QueryDecomposer:
         )
 
         try:
-            response = self.llm.invoke(prompt)
-            selected_table = response.content.strip()
+            response = self.llm(prompt)
+            selected_table = response.strip()
             if selected_table in self.metadata.tables:
                 return selected_table
             return list(self.metadata.tables.keys())[0]

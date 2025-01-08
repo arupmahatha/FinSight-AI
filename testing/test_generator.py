@@ -22,6 +22,12 @@ def test_generator():
                 'column': 'SQL_Property',
                 'matched_value': 'AC Wailea',
                 'score': 100
+            },
+            {
+                'search_term': 'room revenue',
+                'column': 'SQL_Account_Category_Order',
+                'matched_value': 'Room Revenue',
+                'score': 100
             }
         ]
     }

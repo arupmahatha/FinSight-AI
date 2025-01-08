@@ -21,7 +21,9 @@ def test_decomposer():
     # Test complex query decomposition
     print("\n1. Testing Query Decomposition:")
     sub_queries = decomposer._decompose_complex_query(test_query)
-    print(f"Decomposed Queries: {sub_queries}")
+    print("Decomposed Queries:")
+    for i, query in enumerate(sub_queries, 1):
+        print(f"{i}. {query}")
     
     # Test table selection
     print("\n2. Testing Table Selection:")
