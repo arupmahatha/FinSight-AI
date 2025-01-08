@@ -65,94 +65,82 @@ class DatabaseAnalyst:
             }
 
     def format_output(self, results: Dict) -> str:
-        """Format query results for display with detailed steps"""
+        """Format output to match test_workflow.py style"""
         output = []
         
-        # Process each step
         if steps := results.get("steps", []):
             for step in steps:
                 step_name = step["step"]
                 status = step.get("status", "unknown")
-                status_emoji = "✅" if status == "completed" else "❌" if status == "failed" else "⏳"
                 
-                output.append(f"\n### Step: {step_name} {status_emoji}")
-                output.append(f"_{step['description']}_\n")
+                # Print step header like test_workflow
+                output.append(f"\n=== {step_name} ===")
                 
                 if status == "failed":
-                    output.append(f"**Error:** {step.get('error', 'Unknown error')}\n")
+                    output.append(f"❌ Error: {step.get('error', 'Unknown error')}")
+                    continue
                     
                 if step_name == "Query Understanding":
-                    output.append(f"📝 **Input Query:** {step['input']}\n")
+                    output.append(f"Input Query: {step['input']}")
                     
-                elif step_name == "Entity Recognition" and status == "completed":
-                    output.append("🔍 **Identified Entities:**")
-                    for entity in step['entities']:
-                        output.append(f"- Table: `{entity['table']}`, Column: `{entity['column']}`")
-                        output.append(f"  - Matched: '{entity['matched_value']}' (Score: {entity['score']})")
-                    output.append("")
-                    
-                elif step_name == "Query Decomposition" and status == "completed":
-                    output.append("📋 **Sub-queries:**")
-                    for i, sub_query in enumerate(step['sub_queries'], 1):
-                        output.append(f"{i}. {sub_query}")
-                    output.append("")
+                elif step_name == "Query Decomposition":
+                    output.append(f"\nDecomposed into {len(step['details'])} sub-queries:")
+                    for detail in step['details']:
+                        output.append(f"\nSub-query {detail['sub_query_number']}:")
+                        output.append(f"- Type: {detail['type']}")
+                        output.append(f"- Query: {detail['query']}")
+                        output.append(f"- Table: {detail['table']}")
+                        
+                        output.append("\nIdentified Entities:")
+                        for entity in detail['entities']:
+                            output.append(
+                                f"- Found '{entity['search_term']}' in column '{entity['column']}'\n"
+                                f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})"
+                            )
+                        
+                        output.append(f"- Total Entities: {detail['total_entities']}")
+                        output.append(f"- Explanation: {detail['explanation']}")
                     
                 elif step_name == "SQL Generation":
-                    output.append("💻 **Generated SQL:**")
-                    if status == "completed":
-                        for query in step['queries']:
-                            output.append(f"\nFor: _{query['sub_query']}_")
-                            output.append(f"```sql\n{query['sql_query']}\n```")
-                    elif status == "failed" and step.get('partial_queries'):
-                        output.append("\n**Partial Results Before Error:**")
-                        for query in step['partial_queries']:
-                            output.append(f"\nFor: _{query['sub_query']}_")
-                            output.append(f"```sql\n{query['sql_query']}\n```")
-                    output.append("")
+                    for query in step['queries']:
+                        output.append(f"\nProcessing sub-query: {query['sub_query']}")
+                        output.append(f"\nUsing table: {query['table']}")
+                        
+                        output.append("Available columns:")
+                        for col, info in query['table_info'].columns.items():
+                            output.append(f"- {col}: {info.description}")
+                        
+                        output.append(f"\nGenerated SQL: {query['sql_query']}")
                     
-                elif step_name == "Query Execution" and status == "completed":
-                    output.append("📊 **Query Results:**")
+                elif step_name == "Query Execution":
                     for result in step['results']:
-                        output.append(f"\nQuery: _{result['sub_query']}_")
-                        if result.get('error'):
-                            output.append(f"❌ Error: {result['error']}")
+                        if 'error' in result:
+                            output.append(f"\nExecution failed: {result['error']}")
                         else:
-                            output.append("Results:")
-                            results_data = result['results']
-                            if results_data:
-                                # Format as markdown table
-                                headers = results_data[0].keys()
-                                output.append("\n| " + " | ".join(headers) + " |")
-                                output.append("| " + " | ".join(["---"] * len(headers)) + " |")
-                                for row in results_data:
-                                    output.append("| " + " | ".join(str(row[h]) for h in headers) + " |")
-                            else:
-                                output.append("_No results found_")
-                        output.append("")
+                            output.append(f"\nExecution successful: {len(result['results'])} rows returned")
+                            if result['results']:
+                                output.append("\nResults Preview:")
+                                headers = result['results'][0].keys()
+                                output.append(" | ".join(str(h) for h in headers))
+                                output.append("-" * 50)
+                                for row in result['results'][:3]:
+                                    output.append(" | ".join(str(row[h]) for h in headers))
                     
-                elif step_name == "Analysis" and status == "completed":
-                    if analysis := step.get('analysis', {}).get('analysis', {}):
-                        output.append("🎯 **Analysis Results:**")
-                        output.append(f"\n**Summary:** {analysis.get('summary', 'No summary available')}")
-                        
-                        if insights := analysis.get('insights'):
-                            output.append("\n**Key Insights:**")
-                            output.append(f"- {insights}")
-                        
-                        if trends := analysis.get('trends'):
-                            output.append("\n**Trends:**")
-                            output.append(f"- {trends}")
-                        
-                        if implications := analysis.get('implications'):
-                            output.append("\n**Business Implications:**")
-                            output.append(f"- {implications}")
-                            
-                        if relationships := analysis.get('relationships'):
-                            output.append("\n**Relationships:**")
-                            output.append(f"- {relationships}")
-
-        # Add final error message if process failed
+                elif step_name == "Analysis" and step.get('analysis'):
+                    analysis = step['analysis']
+                    output.append("\nAnalysis Results:")
+                    output.append(f"\nSuccess: {analysis['success']}")
+                    output.append(f"Sub-query count: {analysis['sub_query_count']}")
+                    output.append(f"Total result count: {analysis['total_result_count']}")
+                    output.append("\nAnalysis:")
+                    output.append(f"Summary: {analysis['analysis'].get('summary', 'N/A')}")
+                    output.append(f"Insights: {analysis['analysis'].get('insights', 'N/A')}")
+                    output.append(f"Trends: {analysis['analysis'].get('trends', 'N/A')}")
+                    output.append(f"Implications: {analysis['analysis'].get('implications', 'N/A')}")
+                    output.append(f"Relationships: {analysis['analysis'].get('relationships', 'N/A')}")
+        
+        # Add final error if process failed
         if not results.get("success", False):
-            output.append(f"\n❌ **Final Error:** {results.get('error', 'Unknown error')}")
-
+            output.append(f"\n❌ Workflow failed: {results.get('error', 'Unknown error')}")
+        
         return "\n".join(output) 

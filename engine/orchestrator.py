@@ -134,135 +134,169 @@ class QueryOrchestrator:
         return workflow.compile()
 
     def process_query(self, query: str) -> Dict:
-        """Process a natural language query with detailed step tracking"""
-        steps_output = []
+        """Process a natural language query following test workflow structure"""
         try:
-            # Step 1: Query Understanding
-            steps_output.append({
+            # Initialize state
+            state = {
+                "query": query,
+                "decomposed_queries": [],
+                "query_results": [],
+                "final_analysis": {},
+                "error": "",
+                "steps_output": []  # Track detailed steps like test_workflow
+            }
+
+            # Step 1: Query Understanding and Decomposition
+            state["steps_output"].append({
                 "step": "Query Understanding",
-                "description": "Analyzing the input query",
+                "description": "Analyzing input query",
                 "input": query,
                 "status": "completed"
             })
-            
-            # Step 2: Entity Recognition
+
             try:
-                entity_matches = self.decomposer.find_entities(query)
-                steps_output.append({
-                    "step": "Entity Recognition",
-                    "description": "Identifying database entities in the query",
-                    "entities": entity_matches,
-                    "status": "completed"
-                })
-            except Exception as e:
-                steps_output.append({
-                    "step": "Entity Recognition",
-                    "description": "Identifying database entities in the query",
-                    "error": str(e),
-                    "status": "failed"
-                })
-                raise
-            
-            # Step 3: Query Decomposition
-            try:
-                decomposed = self.decomposer.decompose_query(query)
-                steps_output.append({
+                # Decompose the query first
+                decomposed_results = self.decomposer.decompose_query(query)
+                
+                decomposition_details = []
+                for idx, decomposed in enumerate(decomposed_results, 1):
+                    # Find entities for this specific sub-query
+                    entities = self.decomposer.find_entities(decomposed['sub_query'])
+                    decomposed['entities'] = entities  # Store entities with each sub-query
+                    
+                    detail = {
+                        "sub_query_number": idx,
+                        "type": decomposed['type'],
+                        "query": decomposed['sub_query'],
+                        "table": decomposed['table'],
+                        "entities": entities,
+                        "total_entities": len(entities),
+                        "explanation": decomposed['explanation']
+                    }
+                    decomposition_details.append(detail)
+
+                state["decomposed_queries"] = decomposed_results
+                state["steps_output"].append({
                     "step": "Query Decomposition",
                     "description": "Breaking down complex query into simpler parts",
-                    "sub_queries": decomposed,
+                    "details": decomposition_details,
                     "status": "completed"
                 })
+
             except Exception as e:
-                steps_output.append({
+                state["steps_output"].append({
                     "step": "Query Decomposition",
                     "description": "Breaking down complex query into simpler parts",
                     "error": str(e),
                     "status": "failed"
-                })
-                raise
-            
-            # Step 4: SQL Generation
-            try:
-                sql_queries = []
-                for sub_query in decomposed:
-                    sql = self.generator.generate_sql(sub_query)
-                    sql_queries.append({
-                        "sub_query": sub_query,
-                        "sql_query": sql
-                    })
-                steps_output.append({
-                    "step": "SQL Generation",
-                    "description": "Converting natural language to SQL",
-                    "queries": sql_queries,
-                    "status": "completed"
-                })
-            except Exception as e:
-                steps_output.append({
-                    "step": "SQL Generation",
-                    "description": "Converting natural language to SQL",
-                    "error": str(e),
-                    "status": "failed",
-                    "partial_queries": sql_queries if 'sql_queries' in locals() else []
-                })
-                raise
-            
-            # Step 5: Query Execution
-            try:
-                results = []
-                for query in sql_queries:
-                    result = self.executor.execute_query(query['sql_query'])
-                    results.append({
-                        "sub_query": query['sub_query'],
-                        "sql_query": query['sql_query'],
-                        "results": result
-                    })
-                steps_output.append({
-                    "step": "Query Execution",
-                    "description": "Executing SQL queries and fetching results",
-                    "results": results,
-                    "status": "completed"
-                })
-            except Exception as e:
-                steps_output.append({
-                    "step": "Query Execution",
-                    "description": "Executing SQL queries and fetching results",
-                    "error": str(e),
-                    "status": "failed",
-                    "partial_results": results if 'results' in locals() else []
                 })
                 raise
 
-            # Step 6: Analysis
+            # Step 2: SQL Generation
             try:
-                analysis = self.analyzer.analyze_results(
-                    {"original_query": query}, 
-                    results
-                )
-                steps_output.append({
-                    "step": "Analysis",
-                    "description": "Analyzing query results and generating insights",
-                    "analysis": analysis,
+                generated_queries = []
+                for decomposed in state["decomposed_queries"]:
+                    # Get table metadata for the generator
+                    table_info = self.generator.metadata.get_table_info(decomposed['table'])
+                    
+                    # Generate SQL using the decomposed query with its entities
+                    sql_query = self.generator.generate_sql(decomposed)
+                    
+                    generated_queries.append({
+                        "sub_query": decomposed['sub_query'],
+                        "table": decomposed['table'],
+                        "table_info": table_info,
+                        "sql_query": sql_query
+                    })
+
+                state["steps_output"].append({
+                    "step": "SQL Generation",
+                    "description": "Converting natural language to SQL",
+                    "queries": generated_queries,
                     "status": "completed"
                 })
+
             except Exception as e:
-                steps_output.append({
-                    "step": "Analysis",
-                    "description": "Analyzing query results and generating insights",
+                state["steps_output"].append({
+                    "step": "SQL Generation",
+                    "description": "Converting natural language to SQL",
                     "error": str(e),
                     "status": "failed"
                 })
                 raise
-            
-            # Return all steps even if there's an error
+
+            # Step 3: Query Execution
+            try:
+                all_results = []
+                for query_info in generated_queries:
+                    # First validate the query
+                    is_valid, error = self.executor.validate_query(query_info['sql_query'])
+                    
+                    if not is_valid:
+                        raise ValueError(f"SQL validation failed: {error}")
+                    
+                    success, results, error = self.executor.execute_query(query_info['sql_query'])
+                    if not success:
+                        raise ValueError(f"Query execution failed: {error}")
+                    
+                    all_results.append({
+                        'sub_query': query_info['sub_query'],
+                        'sql_query': query_info['sql_query'],
+                        'results': results
+                    })
+
+                state["query_results"] = all_results
+                state["steps_output"].append({
+                    "step": "Query Execution",
+                    "description": "Executing SQL queries and fetching results",
+                    "results": all_results,
+                    "status": "completed"
+                })
+
+            except Exception as e:
+                state["steps_output"].append({
+                    "step": "Query Execution",
+                    "description": "Executing SQL queries and fetching results",
+                    "error": str(e),
+                    "status": "failed"
+                })
+                raise
+
+            # Step 4: Analysis
+            if state["query_results"]:
+                try:
+                    analysis = self.analyzer.analyze_results(
+                        {'original_query': query},
+                        state["query_results"]
+                    )
+                    
+                    state["final_analysis"] = analysis
+                    state["steps_output"].append({
+                        "step": "Analysis",
+                        "description": "Analyzing query results and generating insights",
+                        "analysis": analysis,
+                        "status": "completed"
+                    })
+
+                except Exception as e:
+                    state["steps_output"].append({
+                        "step": "Analysis",
+                        "description": "Analyzing query results and generating insights",
+                        "error": str(e),
+                        "status": "failed"
+                    })
+                    raise
+
             return {
                 "success": True,
-                "steps": steps_output,
-                "final_analysis": None  # Will be filled if process completes
+                "state": state,
+                "steps": state["steps_output"]
             }
-            
+
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
-                "steps": steps_output  # Include all steps that were completed before error
+                "state": state if 'state' in locals() else {},
+                "steps": state["steps_output"] if 'state' in locals() else []
             } 
