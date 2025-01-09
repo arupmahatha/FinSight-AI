@@ -1,0 +1,11 @@
+{
+  "chat_id": "91c159df-3977-4a52-a568-c9af456cfae8",
+  "timestamp": "2025-01-09T20:33:52.144132",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "👋 Hello! I'm your SQL Database Analysis Assistant. \n\nI can help you analyze your database by:\n- Running SQL queries\n- Providing data insights\n- Answering follow-up questions about the results\n\nPlease ask me any question about your database!"
+    }
+  ],
+  "title": "Chat 2025-01-09 20:33"
+}

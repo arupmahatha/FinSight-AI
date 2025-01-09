@@ -35,25 +35,13 @@ class DatabaseAnalyst:
                 "status": "completed"
             })
             
-            # Step 2: Entity Recognition
-            try:
-                entity_matches = self.orchestrator.decomposer.find_entities(query)
-                steps_output.append({
-                    "step": "Entity Recognition",
-                    "description": "Identifying database entities in the query",
-                    "entities": entity_matches,
-                    "status": "completed"
-                })
-            except Exception as e:
-                steps_output.append({
-                    "step": "Entity Recognition",
-                    "description": "Identifying database entities in the query",
-                    "error": str(e),
-                    "status": "failed"
-                })
-                raise
-                
+            # Get orchestrator results
             results = self.orchestrator.process_query(query)
+            
+            # Merge steps
+            if results.get("steps"):
+                steps_output.extend(results["steps"])
+            
             results["steps"] = steps_output
             return results
             

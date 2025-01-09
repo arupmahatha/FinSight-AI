@@ -17,53 +17,66 @@ class GraphState(TypedDict):
     query_results: List[Dict]
     final_analysis: Dict
     error: str
+    steps_output: List[Dict]  # Track detailed steps like test_workflow
 
 class QueryOrchestrator:
     def __init__(self, llm: ChatAnthropic, db_connection):
-        self.decomposer = QueryDecomposer(llm)
-        self.generator = SQLGenerator(llm)
+        # Convert ChatAnthropic to compatible interface
+        self.llm = self._create_compatible_llm(llm)
+        self.decomposer = QueryDecomposer(self.llm)
+        self.generator = SQLGenerator(self.llm)
         self.executor = SQLExecutor(db_connection)
-        self.analyzer = SQLAnalyzer(llm)
+        self.analyzer = SQLAnalyzer(self.llm)
         
         # Initialize graph
         self.workflow = self._create_workflow()
 
-    def _create_decomposer_tool(self) -> BaseTool:
-        @tool("query_decomposer")
-        def decompose_query(query: str) -> List[Dict]:
-            """Decompose complex query into simpler sub-queries"""
-            return self.decomposer.decompose_query(query)
-        return decompose_query
-
-    def _create_generator_tool(self) -> BaseTool:
-        @tool("sql_generator")
-        def generate_sql(query_info: Dict) -> str:
-            """Generate SQL from natural language query"""
-            return self.generator.generate_sql(query_info)
-        return generate_sql
-
-    def _create_executor_tool(self) -> BaseTool:
-        @tool("sql_executor")
-        def execute_sql(sql_query: str) -> Tuple[bool, List[Dict], str]:
-            """Execute SQL query safely"""
-            return self.executor.execute_query(sql_query)
-        return execute_sql
-
-    def _create_analyzer_tool(self) -> BaseTool:
-        @tool("result_analyzer")
-        def analyze_results(query_info: Dict, results: List[Dict]) -> Dict:
-            """Analyze query results and generate insights"""
-            return self.analyzer.analyze_results(query_info, results)
-        return analyze_results
+    def _create_compatible_llm(self, llm: ChatAnthropic):
+        """Create a compatible LLM interface for core components"""
+        return lambda prompt: llm.invoke(prompt).content
 
     def _decompose_step(self, state: GraphState) -> GraphState:
         """Handle query decomposition step"""
         try:
-            decomposed = self.decomposer.decompose_query(state["query"])
-            state["decomposed_queries"] = decomposed
+            # First decompose into sub-queries
+            sub_queries = self.decomposer._decompose_complex_query(state["query"])
+            
+            decomposition_details = []
+            for idx, query in enumerate(sub_queries, 1):
+                # Get table for this sub-query
+                table = self.decomposer._select_relevant_table(query)
+                
+                # Get entities for this sub-query
+                table_info = self.decomposer.metadata.get_table_info(table)
+                self.decomposer._initialize_matcher(table_info)
+                entities = self.decomposer._extract_entities(query, table_info)
+                
+                detail = {
+                    "sub_query_number": idx,
+                    "query": query,
+                    "table": table,
+                    "entities": entities,
+                    "table_info": table_info,
+                    "type": "direct" if len(sub_queries) == 1 else "decomposed",
+                    "explanation": f"Query processed using {table} table"
+                }
+                decomposition_details.append(detail)
+            
+            state["decomposed_queries"] = decomposition_details
+            state["steps_output"].append({
+                "step": "Query Understanding and Decomposition",
+                "details": decomposition_details,
+                "status": "completed"
+            })
             return state
+            
         except Exception as e:
             state["error"] = f"Decomposition failed: {str(e)}"
+            state["steps_output"].append({
+                "step": "Query Understanding and Decomposition",
+                "error": str(e),
+                "status": "failed"
+            })
             return state
 
     def _generate_step(self, state: GraphState) -> GraphState:
@@ -71,33 +84,72 @@ class QueryOrchestrator:
         try:
             generated_queries = []
             for query_info in state["decomposed_queries"]:
-                sql = self.generator.generate_sql(query_info)
+                # Generate SQL for this sub-query
+                query_data = {
+                    'sub_query': query_info['query'],
+                    'table': query_info['table'],
+                    'entities': query_info['entities']
+                }
+                
+                sql = self.generator.generate_sql(query_data)
                 generated_queries.append({
                     **query_info,
                     "sql_query": sql
                 })
+            
             state["generated_sql"] = generated_queries
+            state["steps_output"].append({
+                "step": "SQL Generation",
+                "queries": generated_queries,
+                "status": "completed"
+            })
             return state
+            
         except Exception as e:
             state["error"] = f"SQL generation failed: {str(e)}"
+            state["steps_output"].append({
+                "step": "SQL Generation",
+                "error": str(e),
+                "status": "failed"
+            })
             return state
 
     def _execute_step(self, state: GraphState) -> GraphState:
         """Handle SQL execution step"""
         try:
-            results = []
+            execution_results = []
             for query_info in state["generated_sql"]:
-                success, query_results, error = self.executor.execute_query(query_info["sql_query"])
-                if not success:
-                    raise Exception(error)
-                results.append({
-                    **query_info,
-                    "results": query_results
-                })
-            state["query_results"] = results
+                # Validate and execute SQL
+                is_valid, error = self.executor.validate_query(query_info["sql_query"])
+                if is_valid:
+                    success, results, error = self.executor.execute_query(query_info["sql_query"])
+                    execution_results.append({
+                        **query_info,
+                        "results": results if success else [],
+                        "error": error if not success else None
+                    })
+                else:
+                    execution_results.append({
+                        **query_info,
+                        "results": [],
+                        "error": f"Validation failed: {error}"
+                    })
+            
+            state["query_results"] = execution_results
+            state["steps_output"].append({
+                "step": "Query Execution",
+                "results": execution_results,
+                "status": "completed"
+            })
             return state
+            
         except Exception as e:
             state["error"] = f"Execution failed: {str(e)}"
+            state["steps_output"].append({
+                "step": "Query Execution",
+                "error": str(e),
+                "status": "failed"
+            })
             return state
 
     def _analyze_step(self, state: GraphState) -> GraphState:
@@ -107,30 +159,41 @@ class QueryOrchestrator:
                 query_info = {"original_query": state["query"]}
                 analysis = self.analyzer.analyze_results(query_info, state["query_results"])
                 state["final_analysis"] = analysis
+                state["steps_output"].append({
+                    "step": "Analysis",
+                    "analysis": analysis,
+                    "status": "completed"
+                })
             return state
+            
         except Exception as e:
             state["error"] = f"Analysis failed: {str(e)}"
+            state["steps_output"].append({
+                "step": "Analysis",
+                "error": str(e),
+                "status": "failed"
+            })
             return state
 
     def _create_workflow(self) -> Graph:
         """Create the workflow graph"""
         workflow = StateGraph(GraphState)
-
+        
         # Add nodes
         workflow.add_node("decompose", self._decompose_step)
         workflow.add_node("generate", self._generate_step)
         workflow.add_node("execute", self._execute_step)
         workflow.add_node("analyze", self._analyze_step)
-
+        
         # Add edges
         workflow.add_edge("decompose", "generate")
         workflow.add_edge("generate", "execute")
         workflow.add_edge("execute", "analyze")
-
+        
         # Set entry and end points
         workflow.set_entry_point("decompose")
         workflow.set_finish_point("analyze")
-
+        
         return workflow.compile()
 
     def process_query(self, query: str) -> Dict:
@@ -140,163 +203,26 @@ class QueryOrchestrator:
             state = {
                 "query": query,
                 "decomposed_queries": [],
+                "generated_sql": [],
                 "query_results": [],
                 "final_analysis": {},
                 "error": "",
-                "steps_output": []  # Track detailed steps like test_workflow
+                "steps_output": []
             }
-
-            # Step 1: Query Understanding and Decomposition
-            state["steps_output"].append({
-                "step": "Query Understanding",
-                "description": "Analyzing input query",
-                "input": query,
-                "status": "completed"
-            })
-
-            try:
-                # Decompose the query first
-                decomposed_results = self.decomposer.decompose_query(query)
-                
-                decomposition_details = []
-                for idx, decomposed in enumerate(decomposed_results, 1):
-                    # Find entities for this specific sub-query
-                    entities = self.decomposer.find_entities(decomposed['sub_query'])
-                    decomposed['entities'] = entities  # Store entities with each sub-query
-                    
-                    detail = {
-                        "sub_query_number": idx,
-                        "type": decomposed['type'],
-                        "query": decomposed['sub_query'],
-                        "table": decomposed['table'],
-                        "entities": entities,
-                        "total_entities": len(entities),
-                        "explanation": decomposed['explanation']
-                    }
-                    decomposition_details.append(detail)
-
-                state["decomposed_queries"] = decomposed_results
-                state["steps_output"].append({
-                    "step": "Query Decomposition",
-                    "description": "Breaking down complex query into simpler parts",
-                    "details": decomposition_details,
-                    "status": "completed"
-                })
-
-            except Exception as e:
-                state["steps_output"].append({
-                    "step": "Query Decomposition",
-                    "description": "Breaking down complex query into simpler parts",
-                    "error": str(e),
-                    "status": "failed"
-                })
-                raise
-
-            # Step 2: SQL Generation
-            try:
-                generated_queries = []
-                for decomposed in state["decomposed_queries"]:
-                    # Get table metadata for the generator
-                    table_info = self.generator.metadata.get_table_info(decomposed['table'])
-                    
-                    # Generate SQL using the decomposed query with its entities
-                    sql_query = self.generator.generate_sql(decomposed)
-                    
-                    generated_queries.append({
-                        "sub_query": decomposed['sub_query'],
-                        "table": decomposed['table'],
-                        "table_info": table_info,
-                        "sql_query": sql_query
-                    })
-
-                state["steps_output"].append({
-                    "step": "SQL Generation",
-                    "description": "Converting natural language to SQL",
-                    "queries": generated_queries,
-                    "status": "completed"
-                })
-
-            except Exception as e:
-                state["steps_output"].append({
-                    "step": "SQL Generation",
-                    "description": "Converting natural language to SQL",
-                    "error": str(e),
-                    "status": "failed"
-                })
-                raise
-
-            # Step 3: Query Execution
-            try:
-                all_results = []
-                for query_info in generated_queries:
-                    # First validate the query
-                    is_valid, error = self.executor.validate_query(query_info['sql_query'])
-                    
-                    if not is_valid:
-                        raise ValueError(f"SQL validation failed: {error}")
-                    
-                    success, results, error = self.executor.execute_query(query_info['sql_query'])
-                    if not success:
-                        raise ValueError(f"Query execution failed: {error}")
-                    
-                    all_results.append({
-                        'sub_query': query_info['sub_query'],
-                        'sql_query': query_info['sql_query'],
-                        'results': results
-                    })
-
-                state["query_results"] = all_results
-                state["steps_output"].append({
-                    "step": "Query Execution",
-                    "description": "Executing SQL queries and fetching results",
-                    "results": all_results,
-                    "status": "completed"
-                })
-
-            except Exception as e:
-                state["steps_output"].append({
-                    "step": "Query Execution",
-                    "description": "Executing SQL queries and fetching results",
-                    "error": str(e),
-                    "status": "failed"
-                })
-                raise
-
-            # Step 4: Analysis
-            if state["query_results"]:
-                try:
-                    analysis = self.analyzer.analyze_results(
-                        {'original_query': query},
-                        state["query_results"]
-                    )
-                    
-                    state["final_analysis"] = analysis
-                    state["steps_output"].append({
-                        "step": "Analysis",
-                        "description": "Analyzing query results and generating insights",
-                        "analysis": analysis,
-                        "status": "completed"
-                    })
-
-                except Exception as e:
-                    state["steps_output"].append({
-                        "step": "Analysis",
-                        "description": "Analyzing query results and generating insights",
-                        "error": str(e),
-                        "status": "failed"
-                    })
-                    raise
-
+            
+            # Run the workflow
+            final_state = self.workflow.invoke(state)
+            
             return {
-                "success": True,
-                "state": state,
-                "steps": state["steps_output"]
+                "success": not bool(final_state["error"]),
+                "error": final_state["error"],
+                "steps": final_state["steps_output"],
+                "analysis": final_state.get("final_analysis", {})
             }
-
+            
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
-                "state": state if 'state' in locals() else {},
-                "steps": state["steps_output"] if 'state' in locals() else []
+                "steps": state["steps_output"] if "state" in locals() else []
             } 

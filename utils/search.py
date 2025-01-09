@@ -20,7 +20,7 @@ def get_ngrams(text: str, n_values: List[int] = [1, 2, 3]) -> List[str]:
 
 def search_financial_terms(search_term: str, table_info, threshold: int = 100) -> List[Dict]:
     """
-    Search for financial terms using n-gram based fuzzy matching
+    Search for financial terms by decomposing search query into n-grams and matching against complete values
     Returns list of matches with column and value information
     """
     matches = []
@@ -28,7 +28,7 @@ def search_financial_terms(search_term: str, table_info, threshold: int = 100) -
     if not table_info or not table_info.columns:
         return matches
     
-    # Generate n-grams from search term
+    # Generate n-grams ONLY for search term
     search_ngrams = get_ngrams(search_term)
     
     for col_name, col_info in table_info.columns.items():
@@ -39,35 +39,27 @@ def search_financial_terms(search_term: str, table_info, threshold: int = 100) -
             if not isinstance(value, str):
                 value = str(value)
                 
-            # Generate n-grams for the current value
-            value_ngrams = get_ngrams(value)
-            
-            # Find best matching n-grams
+            # Find best matching n-grams against the complete value
             best_score = 0
-            best_match = None
             best_search_term = None
             
             # Try matching full phrases first
             full_score = fuzz.ratio(search_term.lower(), value.lower())
             if full_score >= threshold:
                 best_score = full_score
-                best_match = value
                 best_search_term = search_term
             
-            # Then try n-gram matches
+            # Then try matching each n-gram against the complete value
             for search_gram in search_ngrams:
-                for value_gram in value_ngrams:
-                    # Use token_sort_ratio to better handle word order variations
-                    score = fuzz.token_sort_ratio(search_gram.lower(), value_gram.lower())
-                    if score > best_score and score >= threshold:
-                        best_score = score
-                        best_match = value
-                        best_search_term = search_gram
+                score = fuzz.token_sort_ratio(search_gram.lower(), value.lower())
+                if score > best_score and score >= threshold:
+                    best_score = score
+                    best_search_term = search_gram
             
-            if best_match:
+            if best_score > 0:
                 matches.append({
                     'search_term': best_search_term,
-                    'matched_value': best_match,
+                    'matched_value': value,  # Keep the complete value
                     'column': col_name,
                     'score': best_score
                 })
