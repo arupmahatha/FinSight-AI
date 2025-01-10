@@ -110,14 +110,15 @@ def run_workflow(query: str, chat_manager: ChatManager):
             "content": query
         })
 
-        # Initialize components
-        llm = get_test_llm()
+        # Initialize components with appropriate models
+        llm_haiku = get_test_llm("haiku")
+        llm_sonnet = get_test_llm("sonnet")
         connection = get_test_db_connection()
 
-        decomposer = QueryDecomposer(llm)
-        generator = SQLGenerator(llm)
+        decomposer = QueryDecomposer(llm_haiku)
+        generator = SQLGenerator(llm_sonnet)
         executor = SQLExecutor(connection)
-        analyzer = SQLAnalyzer(llm)
+        analyzer = SQLAnalyzer(llm_haiku)
 
         workflow_output = {
             "steps": [],

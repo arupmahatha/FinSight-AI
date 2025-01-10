@@ -1,46 +1,42 @@
 import sqlite3
 import os
+from anthropic import Anthropic
 from dotenv import load_dotenv
-
-load_dotenv()  # Load environment variables from .env file
-
-def get_test_llm():
-    """Get test LLM instance"""
-    try:
-        from anthropic import Anthropic
-    except ImportError:
-        raise ImportError(
-            "The 'anthropic' package is not installed. "
-            "Please install it using: pip install anthropic"
-        )
-
-    client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-    
-    def wrapped_client(prompt):
-        try:
-            response = client.messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=1000,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            # Extract content from the response
-            if hasattr(response, 'content') and response.content:
-                return response.content[0].text
-            return "No content found in response"
-            
-        except Exception as e:
-            print(f"Exception occurred while querying LLM: {e}")
-            return f"Exception occurred: {e}"
-
-    # Add a dummy invoke method to maintain compatibility
-    wrapped_client.invoke = lambda prompt: type('Response', (), {'content': wrapped_client(prompt)})()
-    
-    return wrapped_client
+from config import Config
 
 def get_test_db_connection():
     """Get test database connection"""
     return sqlite3.connect("final_working_database.db")
+
+def get_test_llm(model_type: str = "haiku"):
+    """Get test LLM client with appropriate model"""
+    load_dotenv()
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
+    
+    # Create base client
+    client = Anthropic(api_key=api_key)
+    
+    # Create a wrapper function that mimics the behavior we want
+    def wrapped_client(prompt: str):
+        # Choose model based on type
+        model = Config.haiku_model if model_type == "haiku" else Config.sonnet_model
+        
+        response = client.messages.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=1000
+        )
+        return response.content[0].text
+    
+    # Add invoke method to match object-style interface
+    wrapped_client.api_key = api_key
+    wrapped_client.invoke = lambda prompt: type('Response', (), {'content': wrapped_client(prompt)})()
+    
+    return wrapped_client
 
 # Example usage
 if __name__ == "__main__":

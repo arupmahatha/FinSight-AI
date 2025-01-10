@@ -8,12 +8,12 @@ from testing import get_test_llm
 
 def test_decomposer():
     """Test QueryDecomposer functionality"""
-    # Initialize
-    llm = get_test_llm()
+    # Initialize with Haiku model
+    llm = get_test_llm("haiku")
     decomposer = QueryDecomposer(llm)
     
     # Test query
-    test_query = "what is the room revenue for ac wailea for the month of dec 2024?"
+    test_query = "what is the room sold of hilton garden inn bethesda for the month of november 2023?"
     
     print("\n=== Testing QueryDecomposer ===")
     print(f"Input Query: {test_query}")
@@ -34,7 +34,17 @@ def test_decomposer():
         table_info = decomposer.metadata.get_table_info(table)
         decomposer._initialize_matcher(table_info)
         entities = decomposer._extract_entities(query, table_info)
+        
+        # Print extracted entities
+        print(f"Extracted Entities for sub-query {i}:")
         for entity in entities:
+            print(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
+            print(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
+        
+        # Filter entities
+        filtered_entities = decomposer._filter_entities(query, entities)
+        print(f"Filtered Entities for sub-query {i}:")
+        for entity in filtered_entities:
             print(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
             print(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
     
@@ -49,10 +59,19 @@ def test_decomposer():
         print(f"- Query: {result['sub_query']}")
         print(f"- Type: {result['type']}")
         print(f"- Table: {result['table']}")
-        print(f"- Entities:")
-        for entity in result['entities']:
+        
+        # Print extracted entities
+        print(f"- Extracted Entities for sub-query {i}:")
+        for entity in result['extracted_entities']:
             print(f"  * Found '{entity['search_term']}' in column '{entity['column']}'")
-            print(f"    Matched Value: '{entity['matched_value']}' (Score: {entity['score']}')")
+            print(f"    Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
+        
+        # Print filtered entities
+        print(f"- Filtered Entities for sub-query {i}:")
+        for entity in result['filtered_entities']:
+            print(f"  * Found '{entity['search_term']}' in column '{entity['column']}'")
+            print(f"    Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
+        
         print(f"- Explanation: {result['explanation']}")
 
 if __name__ == "__main__":

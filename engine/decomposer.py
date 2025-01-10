@@ -1,15 +1,26 @@
 from typing import List, Dict
 from anthropic import Anthropic
+from config import Config
 from engine.metadata import FinancialTableMetadata
 from fuzzywuzzy import fuzz
 from utils.search import search_financial_terms
 
 class QueryDecomposer:
     def __init__(self, llm: Anthropic):
-        self.llm = llm
+        self.llm = Anthropic(api_key=llm.api_key)  # Create new instance for Haiku
         self.matcher = None
         self.financial_terms = {}
         self.metadata = FinancialTableMetadata()
+
+    def _call_llm(self, prompt: str) -> str:
+        """Helper method to call Claude Haiku with consistent parameters"""
+        response = self.llm.messages.create(
+            model=Config.haiku_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=1000
+        )
+        return response.content[0].text
 
     def _decompose_complex_query(self, query: str, chat_history: List[Dict] = None) -> List[str]:
         """Break down complex queries into simpler sub-queries"""
@@ -31,7 +42,7 @@ class QueryDecomposer:
         Return the sub-queries as a simple list, one per line. For single queries, return just the original query."""
 
         try:
-            response = self.llm(prompt)
+            response = self._call_llm(prompt)
             # Clean up the response and split into lines
             sub_queries = [q.strip() for q in response.split('\n') if q.strip() and not q.startswith('[') and not q.startswith(']')]
             return sub_queries if sub_queries else [query]
@@ -60,7 +71,7 @@ class QueryDecomposer:
         )
 
         try:
-            response = self.llm(prompt)
+            response = self._call_llm(prompt)
             selected_table = response.strip()
             if selected_table in self.metadata.tables:
                 return selected_table
@@ -89,6 +100,46 @@ class QueryDecomposer:
             for match in matches
         ]
 
+    def _filter_entities(self, sub_query: str, entities: List[Dict]) -> List[Dict]:
+        """Filter entities based on the sub-query and extracted entities using LLM"""
+        prompt = f"""Given the sub-query and the extracted entities, return only the relevant entities that should be used for processing the query.
+        Return the entities in the exact same format as provided, maintaining all fields (search_term, column, matched_value, score).
+        Only return the entities that are actually needed to answer the query.
+        
+        Sub-query: {sub_query}
+        
+        Extracted Entities:
+        {[{
+            'search_term': e['search_term'],
+            'column': e['column'],
+            'matched_value': e['matched_value'],
+            'score': e['score']
+        } for e in entities]}
+        
+        Return the filtered entities as a list, keeping the exact same format as above. Include only the entities needed to answer the query."""
+        
+        try:
+            response = self._call_llm(prompt)
+            # Parse the response back into the same entity format
+            try:
+                # The response should be a string representation of a list of dictionaries
+                # Use ast.literal_eval to safely evaluate it
+                import ast
+                filtered_entities = ast.literal_eval(response)
+                if isinstance(filtered_entities, list):
+                    # Validate each entity has the required fields
+                    required_fields = {'search_term', 'column', 'matched_value', 'score'}
+                    if all(isinstance(e, dict) and all(field in e for field in required_fields) for e in filtered_entities):
+                        return filtered_entities
+            except (ValueError, SyntaxError) as e:
+                print(f"Failed to parse LLM response: {e}")
+            
+            # Fallback: return original entities if parsing fails
+            return entities
+        except Exception as e:
+            print(f"Entity filtering failed: {e}")
+            return entities  # Fallback to returning all entities
+
     def decompose_query(self, query: str, chat_history: List[Dict] = None) -> List[Dict]:
         """Main method to process and decompose queries"""
         try:
@@ -98,13 +149,15 @@ class QueryDecomposer:
                 table_name = self._select_relevant_table(sub_query)
                 table_info = self.metadata.get_table_info(table_name)
                 self._initialize_matcher(table_info)
-                entities = self._extract_entities(sub_query, table_info)
+                extracted_entities = self._extract_entities(sub_query, table_info)
+                filtered_entities = self._filter_entities(sub_query, extracted_entities)
                 results.append({
                     "type": "direct" if len(sub_queries) == 1 else "decomposed",
                     "original_query": query,
                     "sub_query": sub_query,
                     "table": table_name,
-                    "entities": entities,
+                    "extracted_entities": extracted_entities,
+                    "filtered_entities": filtered_entities,
                     "explanation": f"Query processed using {table_name} table",
                 })
             return results
@@ -114,16 +167,21 @@ class QueryDecomposer:
                 "type": "direct",
                 "original_query": query,
                 "sub_query": query,
-                "entities": [],
+                "extracted_entities": [],
+                "filtered_entities": [],
                 "explanation": "Direct query (fallback)",
             }]
 
-    def find_entities(self, query: str) -> List[Dict]:
+    def find_entities(self, query: str) -> Dict[str, List[Dict]]:
         """Public method to find entities in a query"""
         table_name = self._select_relevant_table(query)
         table_info = self.metadata.get_table_info(table_name)
         self._initialize_matcher(table_info)
-        entities = self._extract_entities(query, table_info)
-        for entity in entities:
+        extracted_entities = self._extract_entities(query, table_info)
+        filtered_entities = self._filter_entities(query, extracted_entities)
+        for entity in filtered_entities:
             entity["table"] = table_name
-        return entities
+        return {
+            "extracted_entities": extracted_entities,
+            "filtered_entities": filtered_entities,
+        }

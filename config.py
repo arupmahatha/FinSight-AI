@@ -4,7 +4,8 @@ from dataclasses import dataclass
 class Config:
     db_path: str = "final_working_database.db"
     sqlite_path: str = "sqlite:///final_working_database.db"
-    model_name: str = "claude-3-sonnet-20240229"
+    sonnet_model: str = "claude-3-sonnet-20240229"
+    haiku_model: str = "claude-3-haiku-20240307"
     api_key: str = ""  # Anthropic API key
     cache_enabled: bool = True
     cache_dir: str = ".cache"

@@ -1,9 +1,20 @@
 from typing import Dict, List
 from anthropic import Anthropic
+from config import Config
 
 class SQLAnalyzer:
     def __init__(self, llm: Anthropic):
-        self.llm = llm
+        self.llm = Anthropic(api_key=llm.api_key)  # Create new instance for Haiku
+
+    def _call_llm(self, prompt: str) -> str:
+        """Helper method to call Claude Haiku with consistent parameters"""
+        response = self.llm.messages.create(
+            model=Config.haiku_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=1000
+        )
+        return response.content[0].text
 
     def analyze_results(self, query_info: Dict, sub_query_results: List[Dict]) -> Dict:
         """Analyze SQL query results from multiple sub-queries and generate comprehensive insights"""
