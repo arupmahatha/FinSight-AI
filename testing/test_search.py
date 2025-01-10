@@ -20,7 +20,7 @@ class TestSearchFinancialTerms(unittest.TestCase):
 
     def test_search_financial_terms(self):
         # Define test query
-        search_term = "what is the room revenue for ac wailea for the month of dec 2024?"
+        search_term = "what is the room sold of steward santa barbara for the month of november 2023?"
         
         # Step 1: Show n-grams generation
         print("\n=== N-grams Generated ===")

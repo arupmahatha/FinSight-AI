@@ -2,11 +2,11 @@ from typing import List, Dict, Tuple
 from fuzzywuzzy import fuzz
 from nltk import ngrams
 
-def get_ngrams(text: str, n_values: List[int] = [1, 2, 3]) -> List[str]:
+def get_ngrams(text: str, n_values: List[int] = [1, 2, 3, 4]) -> List[str]:
     """Generate n-grams from text for given n values"""
     words = text.lower().split()
     all_ngrams = []
-    
+
     for n in n_values:
         if n <= len(words):
             n_grams = [' '.join(gram) for gram in ngrams(words, n)]
@@ -18,7 +18,7 @@ def get_ngrams(text: str, n_values: List[int] = [1, 2, 3]) -> List[str]:
     
     return all_ngrams
 
-def search_financial_terms(search_term: str, table_info, threshold: int = 100) -> List[Dict]:
+def search_financial_terms(search_term: str, table_info, threshold: int = 95) -> List[Dict]:
     """
     Search for financial terms by decomposing search query into n-grams and matching against complete values
     Returns list of matches with column and value information

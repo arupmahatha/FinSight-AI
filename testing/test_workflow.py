@@ -21,7 +21,7 @@ def test_full_workflow():
     analyzer = SQLAnalyzer(llm)
     
     # Test query
-    test_query = "what is the total budget for AC Wailea for the month of November 2023?"
+    test_query = "what is the room sold of hilton garden inn bethesda for the month of november 2023?"
     
     print("\n=== Testing Complete Workflow ===")
     print(f"Input Query: {test_query}")
