@@ -11,17 +11,18 @@ from testing import get_test_llm, get_test_db_connection
 
 def test_full_workflow():
     """Test the complete workflow from query to analysis"""
-    # Initialize all components
-    llm = get_test_llm()
+    # Initialize all components with appropriate models
+    llm_haiku = get_test_llm("haiku")
+    llm_sonnet = get_test_llm("sonnet")
     connection = get_test_db_connection()
     
-    decomposer = QueryDecomposer(llm)
-    generator = SQLGenerator(llm)
+    decomposer = QueryDecomposer(llm_haiku)
+    generator = SQLGenerator(llm_sonnet)
     executor = SQLExecutor(connection)
-    analyzer = SQLAnalyzer(llm)
+    analyzer = SQLAnalyzer(llm_haiku)
     
     # Test query
-    test_query = "what is the room sold of hilton garden inn bethesda for the month of november 2023?"
+    test_query = "compare the total budget for AC Wailea and residence in tampa for the month of November 2023?"
     
     print("\n=== Testing Complete Workflow ===")
     print(f"Input Query: {test_query}")
@@ -49,12 +50,19 @@ def test_full_workflow():
                 print(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
                 print(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
             
+            # Filter entities
+            filtered_entities = decomposer._filter_entities(query, entities)
+            print("\nFiltered Entities:")
+            for entity in filtered_entities:
+                print(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
+                print(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
+            
             # Step 2: SQL Generation for this sub-query
             print("\n2. SQL Generation:")
             query_info = {
                 'sub_query': query,
                 'table': table,
-                'entities': entities
+                'filtered_entities': filtered_entities  # Match the expected key in generator
             }
             
             print(f"\nGenerating SQL for: {query}")

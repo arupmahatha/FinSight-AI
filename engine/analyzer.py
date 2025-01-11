@@ -1,9 +1,30 @@
 from typing import Dict, List
 from anthropic import Anthropic
+from config import Config
 
 class SQLAnalyzer:
-    def __init__(self, llm: Anthropic):
+    def __init__(self, llm):
+        # Store the wrapped client directly
         self.llm = llm
+
+    def _call_llm(self, prompt: str) -> str:
+        """Helper method to call Claude with consistent parameters"""
+        # Use the wrapped client's direct call method
+        if hasattr(self.llm, 'invoke'):
+            response = self.llm.invoke(prompt)
+            return response.content
+        elif hasattr(self.llm, 'messages'):
+            # Direct Anthropic client call with Haiku model
+            response = self.llm.messages.create(
+                model=Config.haiku_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                max_tokens=1000
+            )
+            return response.content[0].text
+        else:
+            # Direct call to the wrapped function
+            return self.llm(prompt)
 
     def analyze_results(self, query_info: Dict, sub_query_results: List[Dict]) -> Dict:
         """Analyze SQL query results from multiple sub-queries and generate comprehensive insights"""
@@ -13,54 +34,61 @@ class SQLAnalyzer:
             
             # Create prompt for analysis
             prompt = f"""
-            Analyze the following SQL query results and provide insights:
+            Analyze the following SQL query results and provide insights.
             
             Original Query: {query_info['original_query']}
             
             Results:
             {formatted_results}
             
-            Provide analysis in the following JSON format:
+            Provide a detailed analysis in the following format:
             {{
-                "summary": "Overall summary of the results",
-                "insights": "Key insights from the data",
-                "trends": "Any noticeable trends",
-                "implications": "Business implications",
-                "relationships": "Notable relationships between data points"
+                "summary": "<A clear summary of the query results>",
+                "insights": ["<Key insight 1>", "<Key insight 2>", "<Key insight 3>"],
+                "trends": ["<Observed trend 1>", "<Observed trend 2>"],
+                "implications": ["<Business implication 1>", "<Business implication 2>"],
+                "relationships": ["<Data relationship 1>", "<Data relationship 2>"]
             }}
+            
+            Ensure the response is in valid JSON format with the exact keys shown above.
+            Each field except 'summary' should be an array of strings.
             """
             
             # Get analysis from LLM
-            if callable(self.llm):
-                response = self.llm(prompt)
-                response_text = response
-            else:
-                response = self.llm.invoke(prompt)
-                response_text = response.content[0].text if hasattr(response, 'content') else response.content
+            response_text = self._call_llm(prompt)
 
             # Clean and parse the response
             import json
-            import ast
+            import re
 
+            # Clean up the response text
+            cleaned_text = response_text.strip()
+            # Remove any markdown code block markers
+            cleaned_text = re.sub(r'```json\s*|\s*```', '', cleaned_text)
+            
             try:
                 # First try to parse as JSON
-                analysis = json.loads(response_text)
+                analysis = json.loads(cleaned_text)
+                
+                # Ensure proper structure
+                if not isinstance(analysis.get('insights'), list):
+                    analysis['insights'] = [analysis['insights']]
+                if not isinstance(analysis.get('trends'), list):
+                    analysis['trends'] = [analysis['trends']]
+                if not isinstance(analysis.get('implications'), list):
+                    analysis['implications'] = [analysis['implications']]
+                if not isinstance(analysis.get('relationships'), list):
+                    analysis['relationships'] = [analysis['relationships']]
+                
             except json.JSONDecodeError:
-                try:
-                    # If JSON fails, try to find and parse dictionary string
-                    dict_str = response_text.strip()
-                    # Remove any markdown code block markers if present
-                    dict_str = dict_str.replace('```json', '').replace('```', '').strip()
-                    analysis = ast.literal_eval(dict_str)
-                except:
-                    # If both parsing attempts fail, create a basic analysis
-                    analysis = {
-                        "summary": "Unable to parse analysis results",
-                        "insights": "Analysis format error",
-                        "trends": "Analysis format error",
-                        "implications": "Analysis format error",
-                        "relationships": "Analysis format error"
-                    }
+                # Fallback analysis
+                analysis = {
+                    "summary": "Analysis results could not be properly formatted",
+                    "insights": ["No specific insights could be extracted"],
+                    "trends": ["No clear trends could be identified"],
+                    "implications": ["Unable to determine business implications"],
+                    "relationships": ["No clear relationships identified"]
+                }
             
             return {
                 "success": True,

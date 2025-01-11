@@ -1,15 +1,13 @@
 import streamlit as st
-import sys
 import os
-import uuid
+import sys
 from datetime import datetime
+import uuid
+from typing import List, Dict
 
-# Add project root to Python path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if project_root not in sys.path:
-    sys.path.append(project_root)
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 
-# Import testing workflow components
 from engine.decomposer import QueryDecomposer
 from engine.generator import SQLGenerator
 from engine.executor import SQLExecutor
@@ -18,296 +16,404 @@ from testing import get_test_llm, get_test_db_connection
 from ui.manager import ChatManager
 
 def initialize_session_state():
-    """Initialize or reset session state"""
+    """Initialize or reset the session state"""
     if 'initialized' not in st.session_state:
         st.session_state.update({
             'initialized': True,
-            'current_chat_id': str(uuid.uuid4()),
+            'chat_manager': ChatManager(),
             'messages': [],
-            'query': '',
-            'sub_queries': [],
-            'results': [],
-            'analysis': None,
+            'current_chat_id': str(uuid.uuid4()),
             'api_key_set': False,
+            'viewing_chat': False,
+            'saved_chats': {}  # Added to store loaded chats
         })
 
-def render_sidebar(chat_manager: ChatManager):
+def save_chat(chat_id: str, messages: List[Dict]):
+    """Save the current chat"""
+    try:
+        st.session_state.chat_manager.save_chat(chat_id, messages)
+        st.success("💾 Chat saved successfully!")
+        return True
+    except Exception as e:
+        st.error(f"Failed to save chat: {str(e)}")
+        return False
+
+def load_chats():
+    """Load all saved chats"""
+    try:
+        chats = st.session_state.chat_manager.load_chats()
+        st.session_state.saved_chats = chats
+        return True
+    except Exception as e:
+        st.error(f"Failed to load chats: {str(e)}")
+        return False
+
+def render_sidebar():
     """Render the sidebar with configuration and chat management"""
     with st.sidebar:
-        st.title("Configuration Settings")
-        api_key = st.text_input("Anthropic API Key:", type="password", placeholder="Enter your API key here")
+        st.title("⚙️ Configuration")
+        api_key = st.text_input("API Key:", type="password")
         
         if api_key:
             st.session_state.api_key_set = True
         
-        st.title("Conversation Management")
+        st.markdown("---")
         
-        if st.button("Start New Analysis", type="primary",
-                     key="new_chat_button",
+        # New Chat Button
+        if st.button("🆕 Start New Analysis", type="primary", 
+                     key="new_chat_button", 
                      disabled=not st.session_state.api_key_set):
-            handle_new_chat(chat_manager)
-
-        render_chat_history(chat_manager)
+            st.session_state.viewing_chat = False
+            st.session_state.messages = []
+            st.session_state.current_chat_id = str(uuid.uuid4())
+            st.rerun()
+        
+        st.markdown("---")
+        render_chat_history()
     
     return api_key
 
-def handle_new_chat(chat_manager: ChatManager):
-    """Handle creation of a new chat"""
-    if st.session_state.messages:
-        chat_manager.save_chat(
-            st.session_state.current_chat_id,
-            st.session_state.messages
-        )
-    
-    new_chat_id = str(uuid.uuid4())
-    st.session_state.update({
-        'current_chat_id': new_chat_id,
-        'messages': [],
-        'query': '',
-        'sub_queries': [],
-        'results': [],
-        'analysis': None
-    })
-    st.rerun()
-
-def render_chat_history(chat_manager: ChatManager):
+def render_chat_history():
     """Render the chat history sidebar"""
-    st.title("Chat History")
-    chats = chat_manager.load_chats()
+    st.title("💬 Chat History")
     
-    for chat_id, chat_data in chats.items():
-        with st.expander(f"📝 {chat_data['title']}", expanded=False):
-            st.write(f"Created: {datetime.fromisoformat(chat_data['timestamp']).strftime('%Y-%m-%d %H:%M')}")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Load Chat", key=f"load_{chat_id}"):
-                    handle_load_chat(chat_manager, chat_id, chat_data)
-            with col2:
-                if st.button("🗑️ Delete", key=f"delete_{chat_id}"):
-                    handle_delete_chat(chat_manager, chat_id)
+    # Load Chats Button
+    if st.button("📂 Load Saved Chats", type="primary", key="load_chats_button"):
+        load_chats()
+    
+    # Display saved chats
+    if 'saved_chats' in st.session_state and st.session_state.saved_chats:
+        for chat_id, chat_data in st.session_state.saved_chats.items():
+            with st.expander(f"📝 {chat_data['title']}", expanded=False):
+                st.write(f"Created: {datetime.fromisoformat(chat_data['timestamp']).strftime('%Y-%m-%d %H:%M')}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("📖 View", key=f"load_{chat_id}"):
+                        st.session_state.selected_chat = chat_data
+                        st.session_state.viewing_chat = True
+                        st.rerun()
+                
+                with col2:
+                    if st.button("🗑️ Delete", key=f"delete_{chat_id}", type="secondary"):
+                        if st.session_state.chat_manager.delete_chat(chat_id):
+                            # Remove from session state
+                            st.session_state.saved_chats.pop(chat_id, None)
+                            
+                            # Clear selected chat if it was the one deleted
+                            if ('selected_chat' in st.session_state and 
+                                st.session_state.selected_chat.get('chat_id') == chat_id):
+                                del st.session_state.selected_chat
+                                st.session_state.viewing_chat = False
+                            
+                            st.success("🗑️ Chat deleted successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete chat")
+    else:
+        st.info("No saved chats found. Start a new analysis to create one!")
 
-def handle_load_chat(chat_manager: ChatManager, chat_id: str, chat_data: dict):
-    """Handle loading a chat"""
-    st.session_state.messages = chat_data['messages']
-    st.session_state.current_chat_id = chat_id
-    st.rerun()
-
-def handle_delete_chat(chat_manager: ChatManager, chat_id: str):
-    """Handle deleting a chat"""
-    chat_manager.delete_chat(chat_id)
-    if chat_id == st.session_state.current_chat_id:
-        st.session_state.current_chat_id = str(uuid.uuid4())
-        st.session_state.messages = []
-    st.rerun()
-
-def run_workflow(query: str, chat_manager: ChatManager):
-    """Run the testing workflow using backend components"""
-    try:
-        # Add user message to chat
-        st.session_state.messages.append({
-            "role": "user",
-            "content": query
-        })
-
-        # Initialize components
-        llm = get_test_llm()
-        connection = get_test_db_connection()
-
-        decomposer = QueryDecomposer(llm)
-        generator = SQLGenerator(llm)
-        executor = SQLExecutor(connection)
-        analyzer = SQLAnalyzer(llm)
-
-        workflow_output = {
-            "steps": [],
-            "success": True,
-            "error": None
-        }
-
-        # Step 1: Decomposition
+def render_analysis_steps(analysis_data):
+    """Render the analysis steps with custom styling"""
+    query = analysis_data['query']
+    decomposer = analysis_data['decomposer']
+    generator = analysis_data['generator']
+    executor = analysis_data['executor']
+    analyzer = analysis_data['analyzer']
+    
+    # Step 1: Query Understanding and Decomposition
+    with st.expander("📊 1. Query Understanding and Decomposition", expanded=True):
         sub_queries = decomposer._decompose_complex_query(query)
-        st.session_state.sub_queries = sub_queries
+        st.write("Decomposed Queries:")
         
-        results = []
-        for sub_query in sub_queries:
-            step_result = {}
+        for i, sub_query in enumerate(sub_queries, 1):
+            st.write(f"\nSub-query {i}: {sub_query}")
             
-            # Get table and entities
             table = decomposer._select_relevant_table(sub_query)
+            st.write(f"Table: {table}")
+            
             table_info = decomposer.metadata.get_table_info(table)
             decomposer._initialize_matcher(table_info)
             entities = decomposer._extract_entities(sub_query, table_info)
+            
+            st.write("\nIdentified Entities:")
+            for entity in entities:
+                st.write(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
+                st.write(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
+            
+            filtered_entities = decomposer._filter_entities(sub_query, entities)
+            st.write("\nFiltered Entities:")
+            for entity in filtered_entities:
+                st.write(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
+                st.write(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
 
-            # Add to step results
-            step_result["sub_query"] = sub_query
-            step_result["table"] = table
-            step_result["entities"] = entities
+    # Step 2: SQL Generation
+    with st.expander("💡 2. SQL Generation", expanded=True):
+        query_info = {
+            'sub_query': sub_query,
+            'table': table,
+            'filtered_entities': filtered_entities
+        }
+        
+        st.write(f"\nGenerating SQL for: {sub_query}")
+        st.write(f"Using table: {table}")
+        st.write("Available columns:")
+        for col, info in table_info.columns.items():
+            st.write(f"- {col}: {info.description}")
+        
+        sql_query = generator.generate_sql(query_info)
+        st.code(sql_query, language="sql")
 
-            # Step 2: SQL Generation
-            query_info = {
-                'sub_query': sub_query,
-                'table': table,
-                'entities': entities
-            }
-            sql_query = generator.generate_sql(query_info)
-            step_result["sql_query"] = sql_query
-
-            # Step 3: SQL Execution
-            is_valid, error = executor.validate_query(sql_query)
-            if is_valid:
-                success, query_results, error = executor.execute_query(sql_query)
-                results.append({
-                    "sub_query": sub_query,
-                    "sql_query": sql_query,
-                    "results": query_results,
-                    "error": error
-                })
-                step_result["execution"] = {
-                    "success": success,
-                    "results": query_results,
-                    "error": error
-                }
+    # Step 3: Query Execution
+    with st.expander("⚡ 3. Query Execution", expanded=True):
+        is_valid, error = executor.validate_query(sql_query)
+        if is_valid:
+            st.success("SQL validation passed")
+            success, results, error = executor.execute_query(sql_query)
+            if success:
+                st.write(f"Execution successful: {len(results)} rows returned")
+                if results:
+                    st.write("\nResults Preview:")
+                    st.dataframe(results)
             else:
-                results.append({
-                    "sub_query": sub_query,
-                    "sql_query": sql_query,
-                    "results": [],
-                    "error": error
-                })
-                step_result["execution"] = {
-                    "success": False,
-                    "error": error
-                }
+                st.error(f"Execution failed: {error}")
+        else:
+            st.error(f"SQL validation failed: {error}")
 
-            workflow_output["steps"].append(step_result)
-
-        st.session_state.results = results
-
-        # Step 4: Analysis
+    # Step 4: Final Analysis
+    with st.expander("📈 4. Results Analysis", expanded=True):
         analysis = analyzer.analyze_results(
             {'original_query': query},
-            [{'sub_query': r['sub_query'], 'sql_query': r['sql_query'], 'results': r['results']} for r in results]
+            [{'sub_query': q, 'sql_query': sql_query, 'results': results} 
+             for q in sub_queries]
         )
-        st.session_state.analysis = analysis
-        workflow_output["analysis"] = analysis
+        
+        if analysis['success']:
+            st.write("\nAnalysis Results:")
+            st.write(f"Success: {analysis['success']}")
+            st.write(f"Sub-query count: {analysis['sub_query_count']}")
+            st.write(f"Total result count: {analysis['total_result_count']}")
+            
+            st.markdown("#### Key Findings:")
+            st.write(f"📊 Summary: {analysis['analysis'].get('summary', 'N/A')}")
+            st.write(f"💡 Insights: {analysis['analysis'].get('insights', 'N/A')}")
+            st.write(f"📈 Trends: {analysis['analysis'].get('trends', 'N/A')}")
+            st.write(f"🎯 Implications: {analysis['analysis'].get('implications', 'N/A')}")
+            st.write(f"🔗 Relationships: {analysis['analysis'].get('relationships', 'N/A')}")
+        else:
+            st.error(f"Analysis failed: {analysis.get('error', 'Unknown error')}")
+    
+    return analysis
 
-        # Add assistant message with workflow results
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": workflow_output
-        })
-
-        # Save chat
-        chat_manager.save_chat(
-            st.session_state.current_chat_id,
-            st.session_state.messages
-        )
-
-    except Exception as e:
-        error_msg = f"Workflow failed: {str(e)}"
-        st.error(error_msg)
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": f"❌ {error_msg}"
-        })
-        chat_manager.save_chat(
-            st.session_state.current_chat_id,
-            st.session_state.messages
-        )
-
-def render_workflow_results():
-    """Render the workflow results in a structured way"""
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if message["role"] == "user":
-                st.markdown(f"🧑‍💻 **Query:** {message['content']}")
+def load_chat_content(chat_data):
+    """Load and display a saved chat's content"""
+    st.markdown(f"### 📝 Viewing: {chat_data['title']}")
+    st.markdown("---")
+    
+    # Display messages
+    for msg in chat_data['messages']:
+        with st.chat_message(msg['role']):
+            if msg['role'] == 'user':
+                st.markdown("🧑‍💻 **User Query:**")
+                st.info(msg['content'])
             else:
-                if isinstance(message["content"], dict):
-                    workflow_output = message["content"]
-                    
-                    for step in workflow_output.get("steps", []):
-                        st.subheader(f"📋 Sub-query: {step['sub_query']}")
-                        
-                        # Show entities
-                        st.write("**Identified Entities:**")
-                        for entity in step["entities"]:
-                            st.info(
-                                f"Found '{entity['search_term']}' in column '{entity['column']}'\n"
-                                f"Matched Value: '{entity['matched_value']}' (Score: {entity['score']})"
-                            )
-                        
-                        # Show SQL
-                        st.write("**Generated SQL:**")
-                        st.code(step["sql_query"], language="sql")
-                        
-                        # Show execution results
-                        if step["execution"]["success"]:
-                            st.write("**Results:**")
-                            st.dataframe(step["execution"]["results"])
-                        else:
-                            st.error(f"Execution failed: {step['execution']['error']}")
-                    
-                    # Show analysis
-                    if analysis := workflow_output.get("analysis"):
-                        st.header("📊 Analysis Results")
-                        st.success(f"Successfully analyzed {analysis['sub_query_count']} sub-queries")
-                        
-                        if analysis_details := analysis.get("analysis", {}):
-                            st.subheader("Summary")
-                            st.write(analysis_details.get("summary", "No summary available"))
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.subheader("Key Insights")
-                                st.write(analysis_details.get("insights", "No insights available"))
+                try:
+                    # Parse the analysis content
+                    analysis = eval(msg['content'])
+                    if isinstance(analysis, dict):
+                        # Step 1: Query Understanding and Decomposition
+                        with st.expander("📊 1. Query Understanding and Decomposition", expanded=True):
+                            for sub_query_data in analysis.get('sub_queries', []):
+                                st.write(f"\nSub-query: {sub_query_data['sub_query']}")
+                                st.write(f"Table: {sub_query_data['table']}")
                                 
-                                st.subheader("Trends")
-                                st.write(analysis_details.get("trends", "No trends available"))
-                            
-                            with col2:
-                                st.subheader("Implications")
-                                st.write(analysis_details.get("implications", "No implications available"))
+                                st.write("\nIdentified Entities:")
+                                for entity in sub_query_data.get('entities', []):
+                                    st.write(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
+                                    st.write(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
                                 
-                                st.subheader("Relationships")
-                                st.write(analysis_details.get("relationships", "No relationships available"))
-                else:
-                    st.write(message["content"])
+                                st.write("\nFiltered Entities:")
+                                for entity in sub_query_data.get('filtered_entities', []):
+                                    st.write(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
+                                    st.write(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
+
+                        # Step 2: SQL Generation
+                        with st.expander("💡 2. SQL Generation", expanded=True):
+                            for sub_query_data in analysis.get('sub_queries', []):
+                                st.write(f"\nGenerating SQL for: {sub_query_data['sub_query']}")
+                                st.write(f"Using table: {sub_query_data['table']}")
+                                if 'sql_query' in sub_query_data:
+                                    st.code(sub_query_data['sql_query'], language="sql")
+
+                        # Step 3: Query Execution
+                        with st.expander("⚡ 3. Query Execution", expanded=True):
+                            for sub_query_data in analysis.get('sub_queries', []):
+                                if 'execution_results' in sub_query_data:
+                                    results = sub_query_data['execution_results']
+                                    if results.get('success'):
+                                        st.success("SQL validation passed")
+                                        st.write(f"Execution successful: {len(results.get('data', []))} rows returned")
+                                        if results.get('data'):
+                                            st.write("\nResults Preview:")
+                                            st.dataframe(results['data'])
+                                    else:
+                                        st.error(f"Execution failed: {results.get('error')}")
+
+                        # Step 4: Final Analysis
+                        with st.expander("📈 4. Results Analysis", expanded=True):
+                            if analysis.get('success'):
+                                st.write("\nAnalysis Results:")
+                                st.write(f"Success: {analysis['success']}")
+                                st.write(f"Sub-query count: {analysis['sub_query_count']}")
+                                st.write(f"Total result count: {analysis['total_result_count']}")
+                                
+                                st.markdown("#### Key Findings:")
+                                st.write(f"📊 Summary: {analysis['analysis'].get('summary', 'N/A')}")
+                                st.write(f"💡 Insights: {analysis['analysis'].get('insights', 'N/A')}")
+                                st.write(f"📈 Trends: {analysis['analysis'].get('trends', 'N/A')}")
+                                st.write(f"🎯 Implications: {analysis['analysis'].get('implications', 'N/A')}")
+                                st.write(f"🔗 Relationships: {analysis['analysis'].get('relationships', 'N/A')}")
+                            else:
+                                st.error(f"Analysis failed: {analysis.get('error', 'Unknown error')}")
+                except Exception as e:
+                    # If parsing fails, display as regular message
+                    st.write(msg['content'])
+                    st.error(f"Error parsing analysis: {str(e)}")
+    
+    # Add a button to return to query input
+    if st.button("← Back to Query Input", type="secondary"):
+        st.session_state.viewing_chat = False
+        st.rerun()
 
 def main():
     st.set_page_config(
-        page_title="SQL Analysis Tester",
-        page_icon="🧪",
+        page_title="SQL Query Assistant",
+        page_icon="🔍",
         layout="wide"
     )
-
-    st.title("SQL Analysis Testing Interface")
-
-    # Initialize session state and chat manager
+    
     initialize_session_state()
-    chat_manager = ChatManager()
-
-    # Render the sidebar
-    api_key = render_sidebar(chat_manager)
-
+    
+    # Render sidebar and get API key
+    api_key = render_sidebar()
+    
     if not api_key:
-        st.warning("Please enter the API key to proceed.")
+        st.warning("⚠️ Please enter your API key in the sidebar to proceed.")
         return
 
-    # Query Input Section
-    st.header("Enter Your Query")
-    query = st.text_area(
-        "Test query:",
-        value=st.session_state.query,
-        placeholder="e.g., What is the total budget for AC Wailea for November 2023?"
-    )
+    st.title("🔍 SQL Query Assistant")
+    st.markdown("#### Interactive SQL Query Testing & Analysis Tool")
+    st.markdown("---")
 
-    if st.button("Run Analysis", disabled=not st.session_state.api_key_set):
-        st.session_state.query = query
-        run_workflow(query, chat_manager)
+    if st.session_state.viewing_chat and 'selected_chat' in st.session_state:
+        load_chat_content(st.session_state.selected_chat)
+    else:
+        query = st.chat_input("Ask a question about your data",
+            disabled=not st.session_state.api_key_set)
 
-    # Display Results
-    render_workflow_results()
+        if query:
+            with st.spinner('Processing your query...'):
+                try:
+                    # Initialize components
+                    llm_haiku = get_test_llm("haiku")
+                    llm_sonnet = get_test_llm("sonnet")
+                    connection = get_test_db_connection()
+                    
+                    decomposer = QueryDecomposer(llm_haiku)
+                    generator = SQLGenerator(llm_sonnet)
+                    executor = SQLExecutor(connection)
+                    analyzer = SQLAnalyzer(llm_haiku)
+
+                    # Process query and collect all steps
+                    # Step 1: Decomposition
+                    sub_queries = decomposer._decompose_complex_query(query)
+                    all_sub_query_data = []
+                    
+                    for sub_query in sub_queries:
+                        sub_query_data = {}
+                        sub_query_data['sub_query'] = sub_query
+                        
+                        # Get table and entities
+                        table = decomposer._select_relevant_table(sub_query)
+                        sub_query_data['table'] = table
+                        
+                        table_info = decomposer.metadata.get_table_info(table)
+                        decomposer._initialize_matcher(table_info)
+                        entities = decomposer._extract_entities(sub_query, table_info)
+                        sub_query_data['entities'] = entities
+                        
+                        filtered_entities = decomposer._filter_entities(sub_query, entities)
+                        sub_query_data['filtered_entities'] = filtered_entities
+                        
+                        # SQL Generation
+                        query_info = {
+                            'sub_query': sub_query,
+                            'table': table,
+                            'filtered_entities': filtered_entities
+                        }
+                        sql_query = generator.generate_sql(query_info)
+                        sub_query_data['sql_query'] = sql_query
+                        
+                        # Query Execution
+                        is_valid, error = executor.validate_query(sql_query)
+                        execution_results = {
+                            'success': is_valid,
+                            'error': error if not is_valid else None,
+                            'data': None
+                        }
+                        
+                        if is_valid:
+                            success, results, error = executor.execute_query(sql_query)
+                            execution_results['success'] = success
+                            execution_results['error'] = error if not success else None
+                            execution_results['data'] = results if success else None
+                        
+                        sub_query_data['execution_results'] = execution_results
+                        all_sub_query_data.append(sub_query_data)
+
+                    # Final Analysis
+                    analysis = analyzer.analyze_results(
+                        {'original_query': query},
+                        [{'sub_query': data['sub_query'], 
+                          'sql_query': data['sql_query'], 
+                          'results': data['execution_results'].get('data')} 
+                         for data in all_sub_query_data]
+                    )
+
+                    # Combine all data
+                    complete_analysis = {
+                        'sub_queries': all_sub_query_data,
+                        'success': analysis['success'],
+                        'sub_query_count': analysis['sub_query_count'],
+                        'total_result_count': analysis['total_result_count'],
+                        'analysis': analysis['analysis']
+                    }
+
+                    # Display results
+                    with st.chat_message("user"):
+                        st.markdown("🧑‍💻 **User Query:**")
+                        st.info(query)
+
+                    with st.chat_message("assistant"):
+                        render_analysis_steps({
+                            'query': query,
+                            'decomposer': decomposer,
+                            'generator': generator,
+                            'executor': executor,
+                            'analyzer': analyzer
+                        })
+
+                    # Save chat with complete analysis
+                    chat_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    messages = [
+                        {"role": "user", "content": query},
+                        {"role": "assistant", "content": str(complete_analysis)}
+                    ]
+                    save_chat(chat_id, messages)
+                    load_chats()
+
+                except Exception as e:
+                    st.error(f"Error processing query: {str(e)}")
 
 if __name__ == "__main__":
     main()

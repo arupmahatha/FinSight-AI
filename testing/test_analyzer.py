@@ -10,8 +10,8 @@ from testing import get_test_llm
 
 def test_analyzer():
     """Test SQLAnalyzer functionality"""
-    # Initialize
-    llm = get_test_llm()
+    # Initialize with Haiku model
+    llm = get_test_llm("haiku")
     analyzer = SQLAnalyzer(llm)
     
     # Test data
