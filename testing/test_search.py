@@ -20,7 +20,7 @@ class TestSearchFinancialTerms(unittest.TestCase):
 
     def test_search_financial_terms(self):
         # Define test query
-        search_term = "what is the room sold of steward santa barbara for the month of november 2023?"
+        search_term = "What is the total budget for Residence Inn Tampa for 2023?"
         
         # Step 1: Show n-grams generation
         print("\n=== N-grams Generated ===")

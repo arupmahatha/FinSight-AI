@@ -103,8 +103,6 @@ class QueryDecomposer:
     def _filter_entities(self, sub_query: str, entities: List[Dict]) -> List[Dict]:
         """Filter entities based on the sub-query and extracted entities using LLM"""
         prompt = f"""Given the sub-query and the extracted entities, return only the relevant entities that should be used for processing the query.
-        Return the entities in the exact same format as provided, maintaining all fields (search_term, column, matched_value, score).
-        Only return the entities that are actually needed to answer the query.
         
         Sub-query: {sub_query}
         
@@ -116,26 +114,46 @@ class QueryDecomposer:
             'score': e['score']
         } for e in entities]}
         
-        Return the filtered entities as a list, keeping the exact same format as above. Include only the entities needed to answer the query."""
+        Instructions:
+        1. Return ONLY a valid Python list of dictionaries
+        2. Each dictionary MUST have these exact keys: 'search_term', 'column', 'matched_value', 'score'
+        3. Use the exact format below:
+        
+        [
+            {{"search_term": "term1", "column": "col1", "matched_value": "val1", "score": 100}},
+            {{"search_term": "term2", "column": "col2", "matched_value": "val2", "score": 95}}
+        ]
+        
+        Return only the list, no additional text or explanation:"""
         
         try:
             response = self._call_llm(prompt)
-            # Parse the response back into the same entity format
+            # Clean up the response
+            response = response.strip()
+            if not (response.startswith('[') and response.endswith(']')):
+                print(f"Invalid response format: {response}")
+                return entities
+            
             try:
-                # The response should be a string representation of a list of dictionaries
-                # Use ast.literal_eval to safely evaluate it
-                import ast
-                filtered_entities = ast.literal_eval(response)
+                # Replace single quotes with double quotes for valid JSON
+                response = response.replace("'", '"')
+                import json
+                filtered_entities = json.loads(response)
+                
+                # Validate the structure
                 if isinstance(filtered_entities, list):
-                    # Validate each entity has the required fields
                     required_fields = {'search_term', 'column', 'matched_value', 'score'}
                     if all(isinstance(e, dict) and all(field in e for field in required_fields) for e in filtered_entities):
                         return filtered_entities
-            except (ValueError, SyntaxError) as e:
-                print(f"Failed to parse LLM response: {e}")
+                
+            except json.JSONDecodeError as e:
+                print(f"Failed to parse JSON response: {e}")
+            except Exception as e:
+                print(f"Validation failed: {e}")
             
             # Fallback: return original entities if parsing fails
             return entities
+            
         except Exception as e:
             print(f"Entity filtering failed: {e}")
             return entities  # Fallback to returning all entities

@@ -1,0 +1,42 @@
+{
+  "chat_id": "20250111_160656",
+  "timestamp": "2025-01-11T16:06:56.206950",
+  "query": "what is the room sold of hilton garden inn bethesda for the month of november 2023?",
+  "workflow_output": {
+    "steps": [
+      {
+        "step": "Query Understanding and Decomposition",
+        "details": [
+          {
+            "sub_query_number": 1,
+            "query": "what is the room sold of hilton garden inn bethesda for the month of november 2023?",
+            "table": "final_income_sheet_new_seq",
+            "entities": [
+              {
+                "search_term": "hilton garden inn bethesda",
+                "column": "SQL_Property",
+                "matched_value": "Hilton Garden Inn Bethesda",
+                "score": 100
+              },
+              {
+                "search_term": "room sold",
+                "column": "SQL_Account_Category_Order",
+                "matched_value": "Rooms Sold",
+                "score": 95
+              }
+            ],
+            "filtered_entities": [
+              {
+                "search_term": "hilton garden inn bethesda",
+                "column": "SQL_Property",
+                "matched_value": "Hilton Garden Inn Bethesda",
+                "score": 100
+              },
+              {
+                "search_term": "room sold",
+                "column": "SQL_Account_Category_Order",
+                "matched_value": "Rooms Sold",
+                "score": 95
+              }
+            ],
+            "table_info": 

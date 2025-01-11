@@ -4,19 +4,29 @@ from config import Config
 from .metadata import FinancialTableMetadata
 
 class SQLGenerator:
-    def __init__(self, llm: Anthropic):
-        self.llm = Anthropic(api_key=llm.api_key)  # Create new instance for Sonnet
+    def __init__(self, llm):
+        # Store the wrapped client directly
+        self.llm = llm
         self.metadata = FinancialTableMetadata()
 
     def _call_llm(self, prompt: str) -> str:
-        """Helper method to call Claude Sonnet with consistent parameters"""
-        response = self.llm.messages.create(
-            model=Config.sonnet_model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-            max_tokens=1000
-        )
-        return response.content[0].text
+        """Helper method to call Claude with consistent parameters"""
+        # Use the wrapped client's direct call method
+        if hasattr(self.llm, 'invoke'):
+            response = self.llm.invoke(prompt)
+            return response.content
+        elif hasattr(self.llm, 'messages'):
+            # Direct Anthropic client call with Sonnet model
+            response = self.llm.messages.create(
+                model=Config.sonnet_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                max_tokens=1000
+            )
+            return response.content[0].text
+        else:
+            # Direct call to the wrapped function
+            return self.llm(prompt)
 
     def generate_sql(self, query_info: Dict) -> str:
         """
@@ -64,13 +74,7 @@ Requirements:
 
 SQL Query:"""
 
-        # Handle both function-style and object-style LLM interfaces
-        if callable(self.llm):
-            response = self.llm(prompt)
-            sql_query = response.strip()
-        else:
-            response = self.llm.invoke(prompt)
-            sql_query = response.content.strip()
+        sql_query = self._call_llm(prompt).strip()
         
         # Basic validation
         if not sql_query.lower().startswith('select'):
