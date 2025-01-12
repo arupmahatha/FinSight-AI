@@ -3,7 +3,7 @@ from anthropic import Anthropic
 from config import Config
 from engine.metadata import FinancialTableMetadata
 from fuzzywuzzy import fuzz
-from utils.search import search_financial_terms
+from utils.search import search_financial_terms, find_best_match
 
 class QueryDecomposer:
     def __init__(self, llm: Anthropic):
@@ -15,7 +15,7 @@ class QueryDecomposer:
     def _call_llm(self, prompt: str) -> str:
         """Helper method to call Claude Haiku with consistent parameters"""
         response = self.llm.messages.create(
-            model=Config.haiku_model,
+            model=Config.sonnet_model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
             max_tokens=1000
@@ -89,7 +89,21 @@ class QueryDecomposer:
 
     def _extract_entities(self, query: str, table_info) -> List[Dict]:
         """Extract entities using n-gram based fuzzy matching"""
+        # Get regular matches with threshold
         matches = search_financial_terms(query, table_info)
+        
+        # Check if we already have a SQL_Property match
+        has_property_match = any(match['column'] == 'SQL_Property' for match in matches)
+        
+        # If no SQL_Property match found, get best match regardless of threshold
+        if not has_property_match:
+            property_match = find_best_match(query, table_info, 'SQL_Property')
+            if property_match['matched_value'] is not None and property_match['score'] > 15:  # Add minimum threshold
+                # Remove any existing SQL_Property matches
+                matches = [m for m in matches if m['column'] != 'SQL_Property']
+                # Add the new best match
+                matches.append(property_match)
+        
         return [
             {
                 "search_term": match["search_term"],

@@ -7,7 +7,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 
 # Now import the modules after adding to path
-from utils.search import search_financial_terms, get_ngrams
+from utils.search import search_financial_terms, get_ngrams, find_best_match
 from engine.metadata import FinancialTableMetadata
 
 class TestSearchFinancialTerms(unittest.TestCase):
@@ -20,7 +20,7 @@ class TestSearchFinancialTerms(unittest.TestCase):
 
     def test_search_financial_terms(self):
         # Define test query
-        search_term = "What is the total budget for Residence Inn Tampa for 2023?"
+        search_term = "ac wailea"
         
         # Step 1: Show n-grams generation
         print("\n=== N-grams Generated ===")
@@ -37,6 +37,33 @@ class TestSearchFinancialTerms(unittest.TestCase):
             print(f"  Search term used: '{match['search_term']}'")
             print(f"  Matched value: '{match['matched_value']}'")
             print(f"  Match score: {match['score']}")
+
+    def test_find_best_match(self):
+        """Test finding best match in a specific column"""
+        # Test cases with different search terms and columns
+        test_cases = [
+            {
+                "search_term": "ac waliea",
+                "column": "SQL_Property",
+                "description": "Testing partial property name"
+            }
+        ]
+        
+        print("\n=== Testing Best Match Finding ===")
+        for test_case in test_cases:
+            search_term = test_case["search_term"]
+            column = test_case["column"]
+            
+            print(f"\nTest: {test_case['description']}")
+            print(f"Search Term: '{search_term}'")
+            print(f"Column: {column}")
+            
+            # Get best match
+            best_match = find_best_match(search_term, self.table_info, column)
+            
+            print("\nBest Match Results:")
+            print(f"  Matched Value: '{best_match['matched_value']}'")
+            print(f"  Match Score: {best_match['score']}")
 
 if __name__ == "__main__":
     unittest.main() 
