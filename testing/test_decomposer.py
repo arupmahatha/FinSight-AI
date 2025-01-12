@@ -9,7 +9,7 @@ from testing import get_test_llm
 def test_decomposer():
     """Test QueryDecomposer functionality"""
     # Initialize with Haiku model
-    llm = get_test_llm("haiku")
+    llm = get_test_llm("sonnet")
     decomposer = QueryDecomposer(llm)
     
     # Test query
