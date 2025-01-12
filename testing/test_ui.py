@@ -315,8 +315,8 @@ def main():
             with st.spinner('Processing your query...'):
                 try:
                     # Initialize components
-                    llm_haiku = get_test_llm("haiku")
-                    llm_sonnet = get_test_llm("sonnet")
+                    llm_haiku = get_test_llm("haiku", api_key=api_key)
+                    llm_sonnet = get_test_llm("sonnet", api_key=api_key)
                     connection = get_test_db_connection()
                     
                     decomposer = QueryDecomposer(llm_haiku)
