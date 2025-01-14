@@ -98,7 +98,7 @@ class QueryDecomposer:
         # If no SQL_Property match found, get best match regardless of threshold
         if not has_property_match:
             property_match = find_best_match(query, table_info, 'SQL_Property')
-            if property_match['matched_value'] is not None and property_match['score'] > 15:  # Add minimum threshold
+            if property_match['matched_value'] is not None and property_match['score'] > 20:  # Add minimum threshold
                 # Remove any existing SQL_Property matches
                 matches = [m for m in matches if m['column'] != 'SQL_Property']
                 # Add the new best match
@@ -110,7 +110,7 @@ class QueryDecomposer:
         # If no Operator match found, get best match regardless of threshold
         if not has_operator_match:
             operator_match = find_best_match(query, table_info, 'Operator')
-            if operator_match['matched_value'] is not None and operator_match['score'] > 15:  # Add minimum threshold
+            if operator_match['matched_value'] is not None and operator_match['score'] > 20:  # Add minimum threshold
                 # Remove any existing Operator matches
                 matches = [m for m in matches if m['column'] != 'Operator']
                 # Add the new best match
