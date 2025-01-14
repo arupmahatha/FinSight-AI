@@ -14,7 +14,7 @@ def test_executor():
     
     # Test queries
     test_queries = [
-        "SELECT SUM(Current_Actual_Month) AS room_sold FROM final_income_sheet_new_seq WHERE SQL_Property = 'Steward Santa Barbara'AND SQL_Account_Category_Order = 'Rooms Sold' AND Month = '2023-11-01'",
+        "SELECT SUM(Current_Actual_Month) AS room_sold FROM final_income_sheet_new_seq WHERE SQL_Property = 'Steward Santa Barbara' AND SQL_Account_Category_Order = 'Rooms Sold' AND Month = '2023-11-01'",
         "SELECT * FROM final_income_sheet_new_seq LIMIT 5",
         "DELETE FROM final_income_sheet_new_seq",  # Should be blocked
         "SELECT * FROM final_income_sheet_new_seq; DROP TABLE users",  # Should be blocked

@@ -8,10 +8,19 @@ sys.path.append(project_root)
 from engine.analyzer import SQLAnalyzer
 from testing import get_test_llm
 
-def test_analyzer():
+def test_analyzer(api_key=None):
     """Test SQLAnalyzer functionality"""
+    if not api_key:
+        # For local testing, try to get from environment
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        
+    if not api_key:
+        raise ValueError("API key is required")
+    
     # Initialize with Haiku model
-    llm = get_test_llm("haiku")
+    llm = get_test_llm("haiku", api_key=api_key)
     analyzer = SQLAnalyzer(llm)
     
     # Test data

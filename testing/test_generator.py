@@ -6,10 +6,19 @@ sys.path.append(project_root)
 from engine.generator import SQLGenerator
 from testing import get_test_llm
 
-def test_generator():
+def test_generator(api_key=None):
     """Test SQLGenerator functionality"""
+    if not api_key:
+        # For local testing, try to get from environment
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        
+    if not api_key:
+        raise ValueError("API key is required")
+    
     # Initialize with Sonnet model
-    llm = get_test_llm("sonnet")
+    llm = get_test_llm("sonnet", api_key=api_key)
     generator = SQLGenerator(llm)
     
     # Test query info

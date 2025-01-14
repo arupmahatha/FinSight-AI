@@ -43,7 +43,7 @@ class TestSearchFinancialTerms(unittest.TestCase):
         # Test cases with different search terms and columns
         test_cases = [
             {
-                "search_term": "ac waliea",
+                "search_term": "hilton",
                 "column": "SQL_Property",
                 "description": "Testing partial property name"
             }

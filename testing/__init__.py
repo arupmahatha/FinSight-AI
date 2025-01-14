@@ -8,13 +8,10 @@ def get_test_db_connection():
     """Get test database connection"""
     return sqlite3.connect("final_working_database.db")
 
-def get_test_llm(model_type: str = "haiku"):
+def get_test_llm(model_type: str = "haiku", api_key: str = None):
     """Get test LLM client with appropriate model"""
-    load_dotenv()
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    
     if not api_key:
-        raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
+        raise ValueError("API key is required")
     
     # Create base client
     client = Anthropic(api_key=api_key)

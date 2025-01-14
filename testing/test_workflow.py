@@ -9,11 +9,20 @@ from engine.executor import SQLExecutor
 from engine.analyzer import SQLAnalyzer
 from testing import get_test_llm, get_test_db_connection
 
-def test_full_workflow():
+def test_full_workflow(api_key=None):
     """Test the complete workflow from query to analysis"""
+    if not api_key:
+        # For local testing, try to get from environment
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        
+    if not api_key:
+        raise ValueError("API key is required")
+    
     # Initialize all components with appropriate models
-    llm_haiku = get_test_llm("haiku")
-    llm_sonnet = get_test_llm("sonnet")
+    llm_haiku = get_test_llm("haiku", api_key=api_key)
+    llm_sonnet = get_test_llm("sonnet", api_key=api_key)
     connection = get_test_db_connection()
     
     decomposer = QueryDecomposer(llm_haiku)

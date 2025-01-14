@@ -104,6 +104,18 @@ class QueryDecomposer:
                 # Add the new best match
                 matches.append(property_match)
         
+        # Check if we already have a Operator match
+        has_operator_match = any(match['column'] == 'Operator' for match in matches)
+        
+        # If no Operator match found, get best match regardless of threshold
+        if not has_operator_match:
+            operator_match = find_best_match(query, table_info, 'Operator')
+            if operator_match['matched_value'] is not None and operator_match['score'] > 15:  # Add minimum threshold
+                # Remove any existing Operator matches
+                matches = [m for m in matches if m['column'] != 'Operator']
+                # Add the new best match
+                matches.append(operator_match)
+        
         return [
             {
                 "search_term": match["search_term"],
