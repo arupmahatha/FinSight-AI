@@ -36,7 +36,7 @@ class SQLGenerator:
             query_info: Dict containing:
                 - sub_query: The natural language question
                 - table: The target table name 
-                - filtered_entities: List of filtered matched entities
+                - extracted_entities: List of matched entities
         """
         # Get table metadata
         table_info = self.metadata.get_table_info(query_info['table'])
@@ -46,8 +46,8 @@ class SQLGenerator:
         # Format available columns
         available_columns = self._format_table_schema(table_info)
         
-        # Use the filtered entities from decomposer instead of raw entities
-        entity_matches = self._format_entity_matches(query_info.get('filtered_entities', []), table_info)
+        # Use the extracted entities directly
+        entity_matches = self._format_entity_matches(query_info.get('extracted_entities', []), table_info)
         
         prompt = f"""Given the following information, generate a SQL query:
 
@@ -90,7 +90,7 @@ SQL Query:"""
         return "\n".join(schema)
 
     def _format_entity_matches(self, entity_matches: List[Dict], table_info) -> str:
-        """Format entity matches using the filtered entities from decomposer"""
+        """Format entity matches using the extracted entities"""
         if not entity_matches:
             return "No specific entity matches found"
         

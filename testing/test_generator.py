@@ -25,7 +25,7 @@ def test_generator(api_key=None):
     test_query_info = {
         'sub_query': "what is the room revenue for ac wailea for the month of dec 2024?",
         'table': "final_income_sheet_new_seq",
-        'filtered_entities': [
+        'extracted_entities': [
             {
                 'search_term': 'ac wailea',
                 'column': 'SQL_Property',
@@ -45,7 +45,7 @@ def test_generator(api_key=None):
     print(f"Input Query Info:")
     print(f"Sub-query: {test_query_info['sub_query']}")
     print(f"Table: {test_query_info['table']}")
-    print(f"Filtered Entities: {test_query_info['filtered_entities']}")
+    print(f"Extracted Entities: {test_query_info['extracted_entities']}")
     
     # Test table schema formatting
     print("\n1. Testing Table Schema Formatting:")
@@ -56,7 +56,7 @@ def test_generator(api_key=None):
     
     # Test entity matches formatting
     print("\n2. Testing Entity Matches Formatting:")
-    entity_matches = generator._format_entity_matches(test_query_info['filtered_entities'], table_info)
+    entity_matches = generator._format_entity_matches(test_query_info['extracted_entities'], table_info)
     print("Formatted Entity Matches:")
     print(entity_matches)
     
