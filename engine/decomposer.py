@@ -3,7 +3,7 @@ from anthropic import Anthropic
 from config import Config
 from engine.metadata import FinancialTableMetadata
 from fuzzywuzzy import fuzz
-from utils.search import search_financial_terms, find_best_match
+from utils.search import search_financial_terms_without_threshold
 
 class QueryDecomposer:
     def __init__(self, llm: Anthropic):
@@ -88,33 +88,9 @@ class QueryDecomposer:
                 self.financial_terms[column_name] = column_info.distinct_values
 
     def _extract_entities(self, query: str, table_info) -> List[Dict]:
-        """Extract entities using n-gram based fuzzy matching"""
-        # Get regular matches with threshold
-        matches = search_financial_terms(query, table_info)
-        
-        # Check if we already have a SQL_Property match
-        has_property_match = any(match['column'] == 'SQL_Property' for match in matches)
-        
-        # If no SQL_Property match found, get best match regardless of threshold
-        if not has_property_match:
-            property_match = find_best_match(query, table_info, 'SQL_Property')
-            if property_match['matched_value'] is not None and property_match['score'] > 20:  # Add minimum threshold
-                # Remove any existing SQL_Property matches
-                matches = [m for m in matches if m['column'] != 'SQL_Property']
-                # Add the new best match
-                matches.append(property_match)
-        
-        # Check if we already have a Operator match
-        has_operator_match = any(match['column'] == 'Operator' for match in matches)
-        
-        # If no Operator match found, get best match regardless of threshold
-        if not has_operator_match:
-            operator_match = find_best_match(query, table_info, 'Operator')
-            if operator_match['matched_value'] is not None and operator_match['score'] > 20:  # Add minimum threshold
-                # Remove any existing Operator matches
-                matches = [m for m in matches if m['column'] != 'Operator']
-                # Add the new best match
-                matches.append(operator_match)
+        """Extract entities using LLM-based entity extraction and fuzzy matching"""
+        # Use the new search function that uses LLM for entity extraction
+        matches = search_financial_terms_without_threshold(query, table_info, self._call_llm)
         
         return [
             {
@@ -126,64 +102,6 @@ class QueryDecomposer:
             for match in matches
         ]
 
-    def _filter_entities(self, sub_query: str, entities: List[Dict]) -> List[Dict]:
-        """Filter entities based on the sub-query and extracted entities using LLM"""
-        prompt = f"""Given the sub-query and the extracted entities, return only the relevant entities that should be used for processing the query.
-        
-        Sub-query: {sub_query}
-        
-        Extracted Entities:
-        {[{
-            'search_term': e['search_term'],
-            'column': e['column'],
-            'matched_value': e['matched_value'],
-            'score': e['score']
-        } for e in entities]}
-        
-        Instructions:
-        1. Return ONLY a valid Python list of dictionaries
-        2. Each dictionary MUST have these exact keys: 'search_term', 'column', 'matched_value', 'score'
-        3. Use the exact format below:
-        
-        [
-            {{"search_term": "term1", "column": "col1", "matched_value": "val1", "score": 100}},
-            {{"search_term": "term2", "column": "col2", "matched_value": "val2", "score": 95}}
-        ]
-        
-        Return only the list, no additional text or explanation:"""
-        
-        try:
-            response = self._call_llm(prompt)
-            # Clean up the response
-            response = response.strip()
-            if not (response.startswith('[') and response.endswith(']')):
-                print(f"Invalid response format: {response}")
-                return entities
-            
-            try:
-                # Replace single quotes with double quotes for valid JSON
-                response = response.replace("'", '"')
-                import json
-                filtered_entities = json.loads(response)
-                
-                # Validate the structure
-                if isinstance(filtered_entities, list):
-                    required_fields = {'search_term', 'column', 'matched_value', 'score'}
-                    if all(isinstance(e, dict) and all(field in e for field in required_fields) for e in filtered_entities):
-                        return filtered_entities
-                
-            except json.JSONDecodeError as e:
-                print(f"Failed to parse JSON response: {e}")
-            except Exception as e:
-                print(f"Validation failed: {e}")
-            
-            # Fallback: return original entities if parsing fails
-            return entities
-            
-        except Exception as e:
-            print(f"Entity filtering failed: {e}")
-            return entities  # Fallback to returning all entities
-
     def decompose_query(self, query: str, chat_history: List[Dict] = None) -> List[Dict]:
         """Main method to process and decompose queries"""
         try:
@@ -194,14 +112,12 @@ class QueryDecomposer:
                 table_info = self.metadata.get_table_info(table_name)
                 self._initialize_matcher(table_info)
                 extracted_entities = self._extract_entities(sub_query, table_info)
-                filtered_entities = self._filter_entities(sub_query, extracted_entities)
                 results.append({
                     "type": "direct" if len(sub_queries) == 1 else "decomposed",
                     "original_query": query,
                     "sub_query": sub_query,
                     "table": table_name,
                     "extracted_entities": extracted_entities,
-                    "filtered_entities": filtered_entities,
                     "explanation": f"Query processed using {table_name} table",
                 })
             return results
@@ -212,7 +128,6 @@ class QueryDecomposer:
                 "original_query": query,
                 "sub_query": query,
                 "extracted_entities": [],
-                "filtered_entities": [],
                 "explanation": "Direct query (fallback)",
             }]
 
@@ -222,10 +137,8 @@ class QueryDecomposer:
         table_info = self.metadata.get_table_info(table_name)
         self._initialize_matcher(table_info)
         extracted_entities = self._extract_entities(query, table_info)
-        filtered_entities = self._filter_entities(query, extracted_entities)
-        for entity in filtered_entities:
+        for entity in extracted_entities:
             entity["table"] = table_name
         return {
             "extracted_entities": extracted_entities,
-            "filtered_entities": filtered_entities,
         }

@@ -30,7 +30,7 @@ class TestSearchFinancialTerms(unittest.TestCase):
 
     def test_search_financial_terms_without_threshold(self):
         # Define test query
-        sub_query = "Show the EBITDA comparison for 2023 between Courtyard Pasadena Old Town and Residence Westshore Tampa."
+        sub_query = "Show the EBITD comparison for 2023 between Courtyard Pasadena Old Town and Residence Westshore Tampa."
         
         # Extract entities using the LLM
         entities = extract_entities_from_llm(sub_query, self.llm)

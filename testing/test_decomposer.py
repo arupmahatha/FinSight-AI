@@ -49,16 +49,9 @@ def test_decomposer(api_key=None):
         for entity in entities:
             print(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
             print(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
-        
-        # Filter entities
-        filtered_entities = decomposer._filter_entities(query, entities)
-        print(f"Filtered Entities for sub-query {i}:")
-        for entity in filtered_entities:
-            print(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
-            print(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
     
     # Test full decomposition
-    print("\n4. Testing Full Decomposition:")
+    print("\n2. Testing Full Decomposition:")
     results = decomposer.decompose_query(test_query)
     print("Decomposition Results:")
     print(f"\nOriginal Query: {test_query}")
@@ -72,12 +65,6 @@ def test_decomposer(api_key=None):
         # Print extracted entities
         print(f"- Extracted Entities for sub-query {i}:")
         for entity in result['extracted_entities']:
-            print(f"  * Found '{entity['search_term']}' in column '{entity['column']}'")
-            print(f"    Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
-        
-        # Print filtered entities
-        print(f"- Filtered Entities for sub-query {i}:")
-        for entity in result['filtered_entities']:
             print(f"  * Found '{entity['search_term']}' in column '{entity['column']}'")
             print(f"    Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
         
