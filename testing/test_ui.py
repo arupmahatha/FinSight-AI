@@ -136,14 +136,8 @@ def render_analysis_steps(analysis_data):
             decomposer._initialize_matcher(table_info)
             entities = decomposer._extract_entities(sub_query, table_info)
             
-            st.write("\nIdentified Entities:")
+            st.write("\nExtracted Entities:")
             for entity in entities:
-                st.write(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
-                st.write(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
-            
-            filtered_entities = decomposer._filter_entities(sub_query, entities)
-            st.write("\nFiltered Entities:")
-            for entity in filtered_entities:
                 st.write(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
                 st.write(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
 
@@ -152,7 +146,7 @@ def render_analysis_steps(analysis_data):
         query_info = {
             'sub_query': sub_query,
             'table': table,
-            'filtered_entities': filtered_entities
+            'extracted_entities': entities
         }
         
         st.write(f"\nGenerating SQL for: {sub_query}")
@@ -227,13 +221,8 @@ def load_chat_content(chat_data):
                                 st.write(f"\nSub-query: {sub_query_data['sub_query']}")
                                 st.write(f"Table: {sub_query_data['table']}")
                                 
-                                st.write("\nIdentified Entities:")
+                                st.write("\nExtracted Entities:")
                                 for entity in sub_query_data.get('entities', []):
-                                    st.write(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
-                                    st.write(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
-                                
-                                st.write("\nFiltered Entities:")
-                                for entity in sub_query_data.get('filtered_entities', []):
                                     st.write(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
                                     st.write(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
 
@@ -342,14 +331,11 @@ def main():
                         entities = decomposer._extract_entities(sub_query, table_info)
                         sub_query_data['entities'] = entities
                         
-                        filtered_entities = decomposer._filter_entities(sub_query, entities)
-                        sub_query_data['filtered_entities'] = filtered_entities
-                        
                         # SQL Generation
                         query_info = {
                             'sub_query': sub_query,
                             'table': table,
-                            'filtered_entities': filtered_entities
+                            'extracted_entities': entities
                         }
                         sql_query = generator.generate_sql(query_info)
                         sub_query_data['sql_query'] = sql_query

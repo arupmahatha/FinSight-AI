@@ -54,15 +54,8 @@ def test_full_workflow(api_key=None):
             table_info = decomposer.metadata.get_table_info(table)
             decomposer._initialize_matcher(table_info)
             entities = decomposer._extract_entities(query, table_info)
-            print("\nIdentified Entities:")
+            print("\nExtracted Entities:")
             for entity in entities:
-                print(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
-                print(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
-            
-            # Filter entities
-            filtered_entities = decomposer._filter_entities(query, entities)
-            print("\nFiltered Entities:")
-            for entity in filtered_entities:
                 print(f"- Found '{entity['search_term']}' in column '{entity['column']}'")
                 print(f"  Matched Value: '{entity['matched_value']}' (Score: {entity['score']})")
             
@@ -71,7 +64,7 @@ def test_full_workflow(api_key=None):
             query_info = {
                 'sub_query': query,
                 'table': table,
-                'filtered_entities': filtered_entities  # Match the expected key in generator
+                'extracted_entities': entities
             }
             
             print(f"\nGenerating SQL for: {query}")
